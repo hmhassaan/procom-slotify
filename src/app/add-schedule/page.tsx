@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { BookUser, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -14,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { User } from "@/app/types";
+import { useAuth } from "@/context/AuthContext";
 
 const teams = ["ExCom/Core", "CS Competitions", "AI Competitions", "Web Development", "Automation"];
 const positions = ["Executive", "Mentor", "Head", "Co-head", "Deputy Head", "Module Head", "Module Cohead", "Member"];
@@ -23,6 +25,7 @@ export default function AddSchedulePage() {
   const { allCourses, timeSlots, addUser } = useAppContext();
   const router = useRouter();
   const { toast } = useToast();
+  const { currentUser } = useAuth();
 
   const [newUserName, setNewUserName] = useState("");
   const [newUserTeam, setNewUserTeam] = useState("");
@@ -30,6 +33,12 @@ export default function AddSchedulePage() {
   const [offDays, setOffDays] = useState<Record<string, boolean>>({});
   const [courseSearchTerm, setCourseSearchTerm] = useState("");
   const [selectedCourses, setSelectedCourses] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!currentUser) {
+      router.push("/");
+    }
+  }, [currentUser, router]);
 
   const handleAddUser = () => {
     if (!newUserName.trim()) {
@@ -54,7 +63,7 @@ export default function AddSchedulePage() {
 
     const userOffDays = Object.entries(offDays).filter(([, isOff]) => isOff).map(([day]) => day);
     const newUser: User = {
-      id: Date.now().toString(),
+      id: currentUser?.uid || Date.now().toString(),
       name: newUserName,
       courses: userCourses,
       team: newUserTeam,
@@ -73,6 +82,14 @@ export default function AddSchedulePage() {
   }, [allCourses, courseSearchTerm]);
 
   const isFormDisabled = timeSlots.length === 0;
+
+  if (!currentUser) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Redirecting to login...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 md:p-8">

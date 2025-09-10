@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import * as xlsx from "xlsx";
 import {
   FileUp,
@@ -34,6 +35,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import type { Schedule, SlotCoursesIndex } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const norm = (s: unknown) =>
@@ -48,6 +51,14 @@ export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { currentUser } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!currentUser) {
+      router.push("/");
+    }
+  }, [currentUser, router]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -168,6 +179,14 @@ export default function AdminPage() {
     reader.readAsArrayBuffer(file);
     event.target.value = "";
   };
+  
+  if (!currentUser) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Redirecting to login...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 md:p-8">

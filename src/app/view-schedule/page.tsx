@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAppContext } from "@/context/AppContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { User } from "@/app/types";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const teams = ["All", "ExCom/Core", "CS Competitions", "AI Competitions", "Web Development", "Automation"];
@@ -19,6 +22,14 @@ export default function ViewSchedulePage() {
   const { users, timeSlots, slotCourses } = useAppContext();
   const [teamFilter, setTeamFilter] = useState("All");
   const [positionFilter, setPositionFilter] = useState("All");
+  const { currentUser } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!currentUser) {
+      router.push("/");
+    }
+  }, [currentUser, router]);
 
   const filteredUsers = useMemo(() => {
     return users.filter(user =>
@@ -89,6 +100,14 @@ export default function ViewSchedulePage() {
   }, [filteredUsers, timeSlots, slotCourses]);
 
   const isScheduleEmpty = timeSlots.length === 0;
+
+  if (!currentUser) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p>Redirecting to login...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 md:p-8">
