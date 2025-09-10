@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import * as xlsx from "xlsx";
 import {
   FileUp,
@@ -9,6 +9,7 @@ import {
   CalendarDays,
   AlertCircle,
   Users,
+  Search,
 } from "lucide-react";
 
 import type { Schedule, User, FreeSlots } from "@/app/types";
@@ -42,12 +43,20 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea, ScrollBar } from "./ui/scroll-area";
 
+const teams = ["ExCom/Core", "CS Competitions", "AI Competitions", "Web Development", "Automation"];
+const positions = ["Executive", "Mentor", "Head", "Co-head", "Deputy Head", "Module Head", "Module Cohead", "Member"];
+const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
 export default function CourseExtractorApp() {
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [allCourses, setAllCourses] = useState<string[]>([]);
   const [timeSlots, setTimeSlots] = useState<string[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [newUserName, setNewUserName] = useState("");
+  const [newUserTeam, setNewUserTeam] = useState("");
+  const [newUserPosition, setNewUserPosition] = useState("");
+  const [offDays, setOffDays] = useState<Record<string, boolean>>({});
+  const [courseSearchTerm, setCourseSearchTerm] = useState("");
   const [selectedCourses, setSelectedCourses] = useState<Record<string, boolean>>({});
   const [selectedUserForAnalysis, setSelectedUserForAnalysis] = useState<string>("");
   const [freeSlots, setFreeSlots] = useState<FreeSlots | null>(null);
@@ -68,10 +77,10 @@ export default function CourseExtractorApp() {
       try {
         const data = e.target?.result;
         const workbook = xlsx.read(data, { type: "array" });
-        const sheetNames = workbook.SheetNames.slice(0, 5); // Monday to Friday
+        const sheetNames = workbook.SheetNames.filter(name => weekdays.includes(name));
 
         if (sheetNames.length === 0) {
-            throw new Error("Excel file must contain at least one sheet for Monday.");
+            throw new Error("Excel file must contain sheets named Monday, Tuesday, etc.");
         }
 
         const firstSheet = workbook.Sheets[sheetNames[0]];
@@ -106,6 +115,13 @@ export default function CourseExtractorApp() {
             }
         });
 
+        // Ensure all weekdays are in the schedule, even if empty
+        weekdays.forEach(day => {
+            if (!newSchedule[day]) {
+                newSchedule[day] = {};
+            }
+        });
+
         setSchedule(newSchedule);
         setAllCourses(Array.from(coursesSet).sort());
         toast({ title: "Success", description: "Timetable extracted successfully." });
@@ -134,11 +150,25 @@ export default function CourseExtractorApp() {
         toast({ variant: "destructive", title: "Error", description: "Please select at least one course." });
         return;
     }
+     if (!newUserTeam) {
+        toast({ variant: "destructive", title: "Error", description: "Please select a team." });
+        return;
+    }
+    if (!newUserPosition) {
+        toast({ variant: "destructive", title: "Error", description: "Please select a position." });
+        return;
+    }
     
-    const newUser: User = { id: Date.now().toString(), name: newUserName, courses: userCourses };
+    const userOffDays = Object.entries(offDays).filter(([, isOff]) => isOff).map(([day]) => day);
+
+    const newUser: User = { id: Date.now().toString(), name: newUserName, courses: userCourses, team: newUserTeam, position: newUserPosition, offDays: userOffDays };
     setUsers([...users, newUser]);
     setNewUserName("");
+    setNewUserTeam("");
+    setNewUserPosition("");
     setSelectedCourses({});
+    setOffDays({});
+    setCourseSearchTerm("");
     toast({ title: "User Added", description: `${newUser.name} has been added.` });
   };
   
@@ -154,6 +184,11 @@ export default function CourseExtractorApp() {
     const busySlots: { [day: string]: Set<string> } = {};
     Object.keys(schedule).forEach(day => {
         busySlots[day] = new Set();
+        // If it's an off day, all slots are busy
+        if (user.offDays.includes(day)) {
+            timeSlots.forEach(time => busySlots[day].add(time));
+            return;
+        }
         Object.entries(schedule[day]).forEach(([time, course]) => {
             if (course && user.courses.includes(course)) {
                 busySlots[day].add(time);
@@ -169,6 +204,15 @@ export default function CourseExtractorApp() {
     setFreeSlots(newFreeSlots);
   };
 
+  const filteredCourses = useMemo(() => {
+    if (!courseSearchTerm) {
+      return allCourses;
+    }
+    return allCourses.filter(course =>
+      course.toLowerCase().includes(courseSearchTerm.toLowerCase())
+    );
+  }, [allCourses, courseSearchTerm]);
+
   const isStep2Disabled = !schedule;
   const isStep3Disabled = users.length === 0;
 
@@ -181,7 +225,7 @@ export default function CourseExtractorApp() {
             Step 1: Upload Timetable
           </CardTitle>
           <CardDescription>
-            Select an Excel file (.xlsx, .xls) to begin.
+            Select an Excel file (.xlsx, .xls) with sheets named by weekdays.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -200,30 +244,75 @@ export default function CourseExtractorApp() {
           <CardDescription>Add users and assign their enrolled courses.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-                <Label htmlFor="user-name" className="font-semibold">New User Name</Label>
-                <Input id="user-name" placeholder="e.g., Alex Doe" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="mt-2" />
-                <h4 className="font-semibold mt-4 mb-2">Select Courses</h4>
-                <ScrollArea className="h-48 rounded-md border p-4">
-                    <div className="space-y-2">
-                    {allCourses.map(course => (
-                        <div key={course} className="flex items-center space-x-2">
-                            <Checkbox id={course} checked={selectedCourses[course] || false} onCheckedChange={(checked) => setSelectedCourses(prev => ({...prev, [course]: !!checked}))} />
-                            <Label htmlFor={course} className="font-normal">{course}</Label>
-                        </div>
-                    ))}
+            <div className="space-y-4">
+                <div>
+                    <Label htmlFor="user-name" className="font-semibold">New User Name</Label>
+                    <Input id="user-name" placeholder="e.g., Alex Doe" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="mt-2" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="user-team" className="font-semibold">Team</Label>
+                        <Select value={newUserTeam} onValueChange={setNewUserTeam}>
+                            <SelectTrigger id="user-team" className="mt-2">
+                                <SelectValue placeholder="Select team" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {teams.map(team => <SelectItem key={team} value={team}>{team}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
                     </div>
-                </ScrollArea>
-                <Button onClick={handleAddUser} className="mt-4 w-full">Add User</Button>
+                     <div>
+                        <Label htmlFor="user-position" className="font-semibold">Position</Label>
+                        <Select value={newUserPosition} onValueChange={setNewUserPosition}>
+                            <SelectTrigger id="user-position" className="mt-2">
+                                <SelectValue placeholder="Select position" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {positions.map(pos => <SelectItem key={pos} value={pos}>{pos}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                <div>
+                    <Label className="font-semibold">Off Days</Label>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2 mt-2">
+                        {weekdays.map(day => (
+                            <div key={day} className="flex items-center space-x-2">
+                                <Checkbox id={`off-${day}`} checked={offDays[day] || false} onCheckedChange={(checked) => setOffDays(prev => ({...prev, [day]: !!checked}))} />
+                                <Label htmlFor={`off-${day}`} className="font-normal">{day}</Label>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                 <div>
+                    <Label htmlFor="course-search" className="font-semibold">Select Courses</Label>
+                    <div className="relative mt-2">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input id="course-search" placeholder="Search for a course..." value={courseSearchTerm} onChange={(e) => setCourseSearchTerm(e.target.value)} className="pl-10" />
+                    </div>
+                    <ScrollArea className="h-40 rounded-md border p-4 mt-2">
+                        <div className="space-y-2">
+                        {filteredCourses.length > 0 ? filteredCourses.map(course => (
+                            <div key={course} className="flex items-center space-x-2">
+                                <Checkbox id={course} checked={selectedCourses[course] || false} onCheckedChange={(checked) => setSelectedCourses(prev => ({...prev, [course]: !!checked}))} />
+                                <Label htmlFor={course} className="font-normal">{course}</Label>
+                            </div>
+                        )) : <p className="text-sm text-center text-muted-foreground">No courses found.</p>}
+                        </div>
+                    </ScrollArea>
+                 </div>
+                <Button onClick={handleAddUser} className="w-full">Add User</Button>
             </div>
             <div>
                 <h4 className="font-semibold mb-2 flex items-center gap-2"><Users className="w-5 h-5"/>Added Users</h4>
-                <ScrollArea className="h-72">
+                <ScrollArea className="h-[520px]">
                     <div className="space-y-2 pr-4">
                     {users.length > 0 ? users.map(user => (
                         <div key={user.id} className="p-3 bg-muted rounded-lg">
                             <p className="font-semibold">{user.name}</p>
+                            <p className="text-sm text-muted-foreground">{user.team} - {user.position}</p>
                             <p className="text-sm text-muted-foreground">{user.courses.length} courses</p>
+                             {user.offDays.length > 0 && <p className="text-xs text-muted-foreground mt-1">Off: {user.offDays.join(', ')}</p>}
                         </div>
                     )) : <p className="text-sm text-muted-foreground text-center pt-10">No users added yet.</p>}
                     </div>
@@ -279,7 +368,7 @@ export default function CourseExtractorApp() {
                                         ))}
                                     </div>
                                 ) : (
-                                    <span className="text-muted-foreground">No free slots on this day.</span>
+                                    <span className="text-muted-foreground">{users.find(u=>u.id === selectedUserForAnalysis)?.offDays.includes(day) ? "Off day" : "No free slots on this day."}</span>
                                 )}
                             </TableCell>
                             </TableRow>
