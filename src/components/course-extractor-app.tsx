@@ -77,7 +77,10 @@ export default function CourseExtractorApp() {
       try {
         const data = e.target?.result;
         const workbook = xlsx.read(data, { type: "array" });
-        const sheetNames = workbook.SheetNames.filter(name => weekdays.includes(name));
+        const lowerCaseWeekdays = weekdays.map(d => d.toLowerCase());
+        const sheetNames = workbook.SheetNames.filter(name => 
+            lowerCaseWeekdays.includes(name.toLowerCase())
+        );
 
         if (sheetNames.length === 0) {
             throw new Error("Excel file must contain sheets named Monday, Tuesday, etc.");
@@ -95,30 +98,27 @@ export default function CourseExtractorApp() {
         const newSchedule: Schedule = {};
         const coursesSet = new Set<string>();
 
-        sheetNames.forEach(day => {
-            const sheet = workbook.Sheets[day];
+        weekdays.forEach(day => {
+            const sheetName = sheetNames.find(s => s.toLowerCase() === day.toLowerCase());
             newSchedule[day] = {};
-            for (let C = 1; C <= 9; C++) { // Cols B-J
-                const time = newTimeSlots[C - 1];
-                for (let R = 4; R < 72; R++) { // Rows 5-72
-                    const cellAddress = xlsx.utils.encode_cell({ c: C, r: R });
-                    const cell = sheet[cellAddress];
-                    if (cell?.v) {
-                        const courseName = cell.v.toString().trim();
-                        if (courseName && !newSchedule[day][time]) {
-                           newSchedule[day][time] = courseName;
-                           coursesSet.add(courseName);
-                           break; 
+
+            if (sheetName) {
+                const sheet = workbook.Sheets[sheetName];
+                for (let C = 1; C <= 9; C++) { // Cols B-J
+                    const time = newTimeSlots[C - 1];
+                    for (let R = 4; R < 72; R++) { // Rows 5-72
+                        const cellAddress = xlsx.utils.encode_cell({ c: C, r: R });
+                        const cell = sheet[cellAddress];
+                        if (cell?.v) {
+                            const courseName = cell.v.toString().trim();
+                            if (courseName && !newSchedule[day][time]) {
+                               newSchedule[day][time] = courseName;
+                               coursesSet.add(courseName);
+                               break; 
+                            }
                         }
                     }
                 }
-            }
-        });
-
-        // Ensure all weekdays are in the schedule, even if empty
-        weekdays.forEach(day => {
-            if (!newSchedule[day]) {
-                newSchedule[day] = {};
             }
         });
 
