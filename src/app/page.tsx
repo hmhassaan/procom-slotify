@@ -19,10 +19,12 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
+import { useAppContext } from "@/context/AppContext";
 
 
 export default function Home() {
   const { currentUser, signIn, signOut: firebaseSignOut, adminLogin, isAdminBypass } = useAuth();
+  const { loading: appLoading } = useAppContext();
   const router = useRouter();
   const { toast } = useToast();
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
@@ -60,6 +62,14 @@ export default function Home() {
       });
     }
   };
+
+  if (appLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+          <p>Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background">

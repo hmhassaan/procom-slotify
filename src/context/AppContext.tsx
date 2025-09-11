@@ -38,9 +38,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const usersCollection = collection(db, 'users');
     const usersUnsubscribe = onSnapshot(usersCollection, (snapshot) => {
       const usersData = snapshot.docs.map(doc => doc.data() as User);
-      setState(prevState => ({ ...prevState, users: usersData }));
+      setState(prevState => ({ ...prevState, users: usersData, loading: prevState.loading && !snapshot.metadata.fromCache }));
     }, (error) => {
       console.error("Error fetching users:", error);
+      setState(prevState => ({ ...prevState, loading: false }));
     });
 
     const scheduleDoc = doc(db, 'schedule', 'main');
@@ -55,7 +56,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           loading: false,
         }));
       } else {
-        setState(prevState => ({ ...prevState, loading: false }));
+         // if schedule doesn't exist, we're not loading anymore
+        setState(prevState => ({ ...prevState, loading: false, allCourses: [], timeSlots: [], slotCourses: {} }));
       }
     }, (error) => {
       console.error("Error fetching schedule:", error);
@@ -126,11 +128,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AppContext.Provider value={{ ...state, addUser, deleteUser, clearAllUsers, setScheduleData }}>
-      {!state.loading ? children : (
-        <div className="flex items-center justify-center min-h-screen">
-          <p>Loading schedule...</p>
-        </div>
-      )}
+      {children}
     </AppContext.Provider>
   );
 };

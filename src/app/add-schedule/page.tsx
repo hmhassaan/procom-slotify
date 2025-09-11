@@ -22,7 +22,7 @@ const positions = ["Executive", "Mentor", "Head", "Co-head", "Deputy Head", "Mod
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 export default function AddSchedulePage() {
-  const { allCourses, timeSlots, addUser } = useAppContext();
+  const { allCourses, timeSlots, addUser, loading } = useAppContext();
   const router = useRouter();
   const { toast } = useToast();
   const { currentUser } = useAuth();
@@ -90,6 +90,14 @@ export default function AddSchedulePage() {
   }, [allCourses, courseSearchTerm]);
 
   const isFormDisabled = timeSlots.length === 0;
+  
+  if (loading) {
+    return (
+        <div className="flex items-center justify-center min-h-screen">
+          <p>Loading schedule...</p>
+        </div>
+      );
+  }
 
   if (!currentUser) {
     return (

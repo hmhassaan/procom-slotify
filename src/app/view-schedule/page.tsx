@@ -19,7 +19,7 @@ const positions = ["All", "Executive", "Mentor", "Head", "Co-head", "Deputy Head
 const isLab = (name: string) => /\blab\b/i.test(name);
 
 export default function ViewSchedulePage() {
-  const { users, timeSlots, slotCourses } = useAppContext();
+  const { users, timeSlots, slotCourses, loading } = useAppContext();
   const [teamFilter, setTeamFilter] = useState("All");
   const [positionFilter, setPositionFilter] = useState("All");
   const { currentUser } = useAuth();
@@ -100,6 +100,14 @@ export default function ViewSchedulePage() {
   }, [filteredUsers, timeSlots, slotCourses]);
 
   const isScheduleEmpty = timeSlots.length === 0;
+
+  if (loading) {
+      return (
+        <div className="flex items-center justify-center min-h-screen">
+          <p>Loading schedule...</p>
+        </div>
+      );
+  }
 
   if (!currentUser) {
     return (

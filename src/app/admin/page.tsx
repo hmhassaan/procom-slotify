@@ -47,8 +47,8 @@ const norm = (s: unknown) =>
     .trim();
 
 export default function AdminPage() {
-  const { users, deleteUser, setScheduleData, clearAllUsers } = useAppContext();
-  const [isLoading, setIsLoading] = useState(false);
+  const { users, deleteUser, setScheduleData, clearAllUsers, loading } = useAppContext();
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const { currentUser, isAdminBypass } = useAuth();
@@ -66,7 +66,7 @@ export default function AdminPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setIsLoading(true);
+    setIsUploading(true);
     setError(null);
 
     const reader = new FileReader();
@@ -165,17 +165,25 @@ export default function AdminPage() {
         console.error(err);
         setError(err instanceof Error ? err.message : "An unknown error occurred during file processing.");
       } finally {
-        setIsLoading(false);
+        setIsUploading(false);
       }
     };
     reader.onerror = () => {
       setError("Failed to read the file.");
-      setIsLoading(false);
+      setIsUploading(false);
     };
     reader.readAsArrayBuffer(file);
     event.target.value = "";
   };
   
+  if (loading) {
+     return (
+        <div className="flex items-center justify-center min-h-screen">
+          <p>Loading...</p>
+        </div>
+      );
+  }
+
   if (!currentUser || !isAdminBypass) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -208,10 +216,10 @@ export default function AdminPage() {
               type="file"
               accept=".xlsx, .xls"
               onChange={handleFileChange}
-              disabled={isLoading}
+              disabled={isUploading}
               className="file:text-primary file:font-semibold"
             />
-            {isLoading && (
+            {isUploading && (
               <div className="flex items-center justify-center mt-4 text-muted-foreground">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Processing...
