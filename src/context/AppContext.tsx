@@ -1,7 +1,8 @@
+
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs } from 'firebase/firestore';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
 
@@ -34,40 +35,76 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     loading: true,
   });
 
-  useEffect(() => {
-    const usersCollection = collection(db, 'users');
-    const usersUnsubscribe = onSnapshot(usersCollection, (snapshot) => {
-      const usersData = snapshot.docs.map(doc => doc.data() as User);
-      setState(prevState => ({ ...prevState, users: usersData, loading: prevState.loading && !snapshot.metadata.fromCache }));
-    }, (error) => {
-      console.error("Error fetching users:", error);
-      setState(prevState => ({ ...prevState, loading: false }));
-    });
-
+  const setScheduleData = useCallback(async (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => {
+    const { slotCourses, allCourses, timeSlots } = data;
     const scheduleDoc = doc(db, 'schedule', 'main');
-    const scheduleUnsubscribe = onSnapshot(scheduleDoc, (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
+    await setDoc(scheduleDoc, { slotCourses, allCourses, timeSlots });
+
+    // This part can be slow, but it's important for data integrity.
+    // It is now faster as it doesn't run in a batch with the schedule update.
+    const usersCollection = collection(db, 'users');
+    const usersSnapshot = await getDocs(usersCollection);
+    const batch = writeBatch(db);
+    usersSnapshot.forEach(userDoc => {
+        const user = userDoc.data() as User;
+        const updatedCourses = user.courses.filter(course => allCourses.includes(course));
+        if (updatedCourses.length !== user.courses.length) {
+            const userRef = doc(db, 'users', user.id);
+            batch.update(userRef, { courses: updatedCourses });
+        }
+    });
+    await batch.commit();
+  }, []);
+
+
+  useEffect(() => {
+    setState(prevState => ({ ...prevState, loading: true }));
+    const scheduleDoc = doc(db, 'schedule', 'main');
+
+    // First, fetch schedule data once to speed up initial load
+    getDoc(scheduleDoc).then(docSnap => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
         setState(prevState => ({
           ...prevState,
           allCourses: data.allCourses || [],
           timeSlots: data.timeSlots || [],
           slotCourses: data.slotCourses || {},
-          loading: false,
         }));
-      } else {
-         // if schedule doesn't exist, we're not loading anymore
-        setState(prevState => ({ ...prevState, loading: false, allCourses: [], timeSlots: [], slotCourses: {} }));
       }
-    }, (error) => {
-      console.error("Error fetching schedule:", error);
+      // Regardless of existence, fetch users
+      const usersCollection = collection(db, 'users');
+      const usersUnsubscribe = onSnapshot(usersCollection, (snapshot) => {
+        const usersData = snapshot.docs.map(doc => doc.data() as User);
+        setState(prevState => ({ ...prevState, users: usersData, loading: false }));
+      }, (error) => {
+        console.error("Error fetching users:", error);
+        setState(prevState => ({ ...prevState, loading: false }));
+      });
+
+      // After initial load, listen for real-time schedule updates
+      const scheduleUnsubscribe = onSnapshot(scheduleDoc, (doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          setState(prevState => ({
+            ...prevState,
+            allCourses: data.allCourses || [],
+            timeSlots: data.timeSlots || [],
+            slotCourses: data.slotCourses || {},
+          }));
+        } else {
+          setState(prevState => ({ ...prevState, allCourses: [], timeSlots: [], slotCourses: {} }));
+        }
+      });
+      
+      return () => {
+        usersUnsubscribe();
+        scheduleUnsubscribe();
+      };
+    }).catch(error => {
+      console.error("Error fetching initial schedule:", error);
       setState(prevState => ({ ...prevState, loading: false }));
     });
-
-    return () => {
-      usersUnsubscribe();
-      scheduleUnsubscribe();
-    };
   }, []);
 
   const addUser = async (user: User) => {
@@ -99,30 +136,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       await batch.commit();
     } catch (error) {
       console.error("Error clearing all users:", error);
-    }
-  };
-
-  const setScheduleData = async (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => {
-    const { slotCourses, allCourses, timeSlots } = data;
-    const scheduleDoc = doc(db, 'schedule', 'main');
-    const batch = writeBatch(db);
-
-    try {
-        batch.set(scheduleDoc, { slotCourses, allCourses, timeSlots });
-
-        const usersCollection = collection(db, 'users');
-        const usersSnapshot = await getDocs(usersCollection);
-
-        usersSnapshot.forEach(userDoc => {
-            const user = userDoc.data() as User;
-            const updatedCourses = user.courses.filter(course => allCourses.includes(course));
-            const userRef = doc(db, 'users', user.id);
-            batch.update(userRef, { courses: updatedCourses });
-        });
-
-        await batch.commit();
-    } catch (error) {
-        console.error("Error setting schedule data:", error);
     }
   };
 
