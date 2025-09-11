@@ -20,5 +20,8 @@ export const db = getFirestore(app);
 isSupported().then(supported => {
   if (supported) {
     getAnalytics(app);
+    console.log("Firebase Analytics initialized successfully.");
+  } else {
+    console.log("Firebase Analytics is not supported in this environment.");
   }
 });
