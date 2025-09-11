@@ -2,13 +2,31 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, LogIn, LogOut } from "lucide-react";
+import { ArrowRight, LogIn, LogOut, Shield } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
+
 
 export default function Home() {
-  const { currentUser, signIn, signOut: firebaseSignOut } = useAuth();
+  const { currentUser, signIn, signOut: firebaseSignOut, adminLogin, isAdminBypass } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
+  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+  const [password, setPassword] = useState("");
 
   const handleSignIn = async () => {
     try {
@@ -16,12 +34,31 @@ export default function Home() {
       router.push('/add-schedule');
     } catch (error) {
       console.error("Sign in failed", error);
+      toast({
+        variant: "destructive",
+        title: "Sign in failed",
+        description: "Could not sign you in with Google. Please try again.",
+      });
     }
   };
 
   const handleSignOut = async () => {
     await firebaseSignOut();
     router.push('/');
+  };
+
+  const handleAdminLogin = () => {
+    try {
+      adminLogin(password);
+      setIsAdminLoginOpen(false);
+      router.push('/admin');
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Login Failed",
+        description: (error as Error).message,
+      });
+    }
   };
 
   return (
@@ -69,12 +106,40 @@ export default function Home() {
           </div>
         </>
       ) : (
-        <div className="mt-8">
+        <div className="mt-8 flex flex-col items-center space-y-4">
           <Button onClick={handleSignIn} className="text-lg py-6 px-8">
             <LogIn className="mr-2" /> Sign In with Google
           </Button>
+          <Button variant="secondary" onClick={() => setIsAdminLoginOpen(true)}>
+            <Shield className="mr-2" /> Admin Login
+          </Button>
         </div>
       )}
+
+      <AlertDialog open={isAdminLoginOpen} onOpenChange={setIsAdminLoginOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Admin Login</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enter the admin password to bypass Google Sign-In.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAdminLogin()}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleAdminLogin}>Login</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
