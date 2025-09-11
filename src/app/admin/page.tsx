@@ -34,7 +34,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { Schedule, SlotCoursesIndex } from "@/context/AppContext";
+import type { SlotCoursesIndex } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 
@@ -51,14 +51,16 @@ export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const { currentUser } = useAuth();
+  const { currentUser, isAdminBypass } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!currentUser) {
+    // A real app would have proper role-based access control.
+    // For this demo, we allow access if the user is the admin bypass user.
+    if (!currentUser || !isAdminBypass) {
       router.push("/");
     }
-  }, [currentUser, router]);
+  }, [currentUser, isAdminBypass, router]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -68,7 +70,7 @@ export default function AdminPage() {
     setError(null);
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = e.target?.result;
         const workbook = xlsx.read(data, { type: "array" });
@@ -121,7 +123,6 @@ export default function AdminPage() {
         if (classHeaderRow < 0) throw new Error("Couldn't locate the 'CLASSROOMS' header row.");
 
         const slotIdx: SlotCoursesIndex = {};
-        const compatSchedule: Schedule = {};
         const courseSet = new Set<string>();
 
         for (const day of weekdays) {
@@ -133,7 +134,6 @@ export default function AdminPage() {
 
           const r = xlsx.utils.decode_range(sheet["!ref"]);
           slotIdx[day] = {};
-          compatSchedule[day] = {};
 
           for (let cIdx = 0; cIdx < newTimeSlots.length; cIdx++) {
             const c = 1 + cIdx;
@@ -147,10 +147,6 @@ export default function AdminPage() {
 
               coursesThisSlot.push(val);
               courseSet.add(val);
-
-              if (!compatSchedule[day][time]) {
-                compatSchedule[day][time] = val;
-              }
             }
             slotIdx[day][time] = Array.from(new Set(coursesThisSlot));
           }
@@ -158,7 +154,7 @@ export default function AdminPage() {
         
         const newAllCourses = Array.from(courseSet).sort((a, b) => a.localeCompare(b));
         
-        setScheduleData({
+        await setScheduleData({
             slotCourses: slotIdx,
             allCourses: newAllCourses,
             timeSlots: newTimeSlots,
@@ -180,10 +176,10 @@ export default function AdminPage() {
     event.target.value = "";
   };
   
-  if (!currentUser) {
+  if (!currentUser || !isAdminBypass) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p>Redirecting to login...</p>
+        <p>Redirecting...</p>
       </div>
     );
   }
@@ -253,8 +249,8 @@ export default function AdminPage() {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => {
-                      clearAllUsers();
+                    <AlertDialogAction onClick={async () => {
+                      await clearAllUsers();
                       toast({ title: "Success", description: "All users have been deleted." });
                     }}>
                       Continue
@@ -294,8 +290,8 @@ export default function AdminPage() {
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => {
-                              deleteUser(user.id);
+                            <AlertDialogAction onClick={async () => {
+                              await deleteUser(user.id);
                               toast({ title: "User Deleted", description: `${user.name} has been removed.` });
                             }}>
                               Delete

@@ -1,6 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
 
 export type SlotCoursesIndex = Record<string, Record<string, string[]>>;
@@ -11,77 +13,124 @@ interface AppState {
   allCourses: string[];
   timeSlots: string[];
   slotCourses: SlotCoursesIndex;
+  loading: boolean;
 }
 
 interface AppContextType extends AppState {
-  addUser: (user: User) => void;
-  deleteUser: (userId: string) => void;
-  clearAllUsers: () => void;
-  setScheduleData: (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => void;
+  addUser: (user: User) => Promise<void>;
+  deleteUser: (userId: string) => Promise<void>;
+  clearAllUsers: () => Promise<void>;
+  setScheduleData: (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const isBrowser = typeof window !== 'undefined';
-
 export const AppProvider = ({ children }: { children: ReactNode }) => {
-  const [state, setState] = useState<AppState>(() => {
-    if (!isBrowser) {
-        return { users: [], allCourses: [], timeSlots: [], slotCourses: {} };
-    }
-    try {
-      const item = window.localStorage.getItem('appState');
-      return item ? JSON.parse(item) : { users: [], allCourses: [], timeSlots: [], slotCourses: {} };
-    } catch (error) {
-      console.error("Failed to parse state from localStorage", error);
-      return { users: [], allCourses: [], timeSlots: [], slotCourses: {} };
-    }
+  const [state, setState] = useState<AppState>({
+    users: [],
+    allCourses: [],
+    timeSlots: [],
+    slotCourses: {},
+    loading: true,
   });
 
   useEffect(() => {
-    if (isBrowser) {
-        try {
-            window.localStorage.setItem('appState', JSON.stringify(state));
-        } catch (error) {
-            console.error("Failed to save state to localStorage", error);
-        }
-    }
-  }, [state]);
+    const usersCollection = collection(db, 'users');
+    const usersUnsubscribe = onSnapshot(usersCollection, (snapshot) => {
+      const usersData = snapshot.docs.map(doc => doc.data() as User);
+      setState(prevState => ({ ...prevState, users: usersData }));
+    }, (error) => {
+      console.error("Error fetching users:", error);
+    });
 
-  const addUser = (user: User) => {
-    setState(prevState => ({ ...prevState, users: [...prevState.users, user] }));
+    const scheduleDoc = doc(db, 'schedule', 'main');
+    const scheduleUnsubscribe = onSnapshot(scheduleDoc, (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        setState(prevState => ({
+          ...prevState,
+          allCourses: data.allCourses || [],
+          timeSlots: data.timeSlots || [],
+          slotCourses: data.slotCourses || {},
+          loading: false,
+        }));
+      } else {
+        setState(prevState => ({ ...prevState, loading: false }));
+      }
+    }, (error) => {
+      console.error("Error fetching schedule:", error);
+      setState(prevState => ({ ...prevState, loading: false }));
+    });
+
+    return () => {
+      usersUnsubscribe();
+      scheduleUnsubscribe();
+    };
+  }, []);
+
+  const addUser = async (user: User) => {
+    try {
+      const userDoc = doc(db, 'users', user.id);
+      await setDoc(userDoc, user);
+    } catch (error) {
+      console.error("Error adding user:", error);
+    }
   };
 
-  const deleteUser = (userId: string) => {
-    setState(prevState => ({ ...prevState, users: prevState.users.filter(user => user.id !== userId) }));
+  const deleteUser = async (userId: string) => {
+    try {
+      const userDoc = doc(db, 'users', userId);
+      await deleteDoc(userDoc);
+    } catch (error) {
+      console.error("Error deleting user:", error);
+    }
   };
   
-  const clearAllUsers = () => {
-    setState(prevState => ({ ...prevState, users: [] }));
+  const clearAllUsers = async () => {
+    try {
+      const usersCollection = collection(db, 'users');
+      const usersSnapshot = await getDocs(usersCollection);
+      const batch = writeBatch(db);
+      usersSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error("Error clearing all users:", error);
+    }
   };
 
-  const setScheduleData = (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => {
+  const setScheduleData = async (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => {
     const { slotCourses, allCourses, timeSlots } = data;
-    setState(prevState => {
-        // When schedule updates, filter out courses for each user that no longer exist
-        const updatedUsers = prevState.users.map(user => ({
-            ...user,
-            courses: user.courses.filter(course => allCourses.includes(course)),
-        }));
+    const scheduleDoc = doc(db, 'schedule', 'main');
+    const batch = writeBatch(db);
 
-        return {
-            ...prevState,
-            slotCourses,
-            allCourses,
-            timeSlots,
-            users: updatedUsers,
-        };
-    });
+    try {
+        batch.set(scheduleDoc, { slotCourses, allCourses, timeSlots });
+
+        const usersCollection = collection(db, 'users');
+        const usersSnapshot = await getDocs(usersCollection);
+
+        usersSnapshot.forEach(userDoc => {
+            const user = userDoc.data() as User;
+            const updatedCourses = user.courses.filter(course => allCourses.includes(course));
+            const userRef = doc(db, 'users', user.id);
+            batch.update(userRef, { courses: updatedCourses });
+        });
+
+        await batch.commit();
+    } catch (error) {
+        console.error("Error setting schedule data:", error);
+    }
   };
 
   return (
     <AppContext.Provider value={{ ...state, addUser, deleteUser, clearAllUsers, setScheduleData }}>
-      {children}
+      {!state.loading ? children : (
+        <div className="flex items-center justify-center min-h-screen">
+          <p>Loading schedule...</p>
+        </div>
+      )}
     </AppContext.Provider>
   );
 };

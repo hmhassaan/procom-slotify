@@ -37,10 +37,12 @@ export default function AddSchedulePage() {
   useEffect(() => {
     if (!currentUser) {
       router.push("/");
+    } else {
+      setNewUserName(currentUser.displayName || "");
     }
   }, [currentUser, router]);
 
-  const handleAddUser = () => {
+  const handleAddUser = async () => {
     if (!newUserName.trim()) {
       toast({ variant: "destructive", title: "Error", description: "Please enter a user name." });
       return;
@@ -62,15 +64,21 @@ export default function AddSchedulePage() {
     }
 
     const userOffDays = Object.entries(offDays).filter(([, isOff]) => isOff).map(([day]) => day);
+    
+    if (!currentUser) {
+      toast({ variant: "destructive", title: "Error", description: "You must be logged in to add a schedule." });
+      return;
+    }
+
     const newUser: User = {
-      id: currentUser?.uid || Date.now().toString(),
+      id: currentUser.uid,
       name: newUserName,
       courses: userCourses,
       team: newUserTeam,
       position: newUserPosition,
       offDays: userOffDays,
     };
-    addUser(newUser);
+    await addUser(newUser);
     toast({ title: "User Added", description: `${newUser.name} has been added.` });
     router.push("/view-schedule");
   };
