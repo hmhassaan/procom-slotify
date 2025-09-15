@@ -10,7 +10,6 @@ type CustomUser = {
   displayName: string | null;
   email: string | null;
   photoURL: string | null;
-  // Add other properties as needed to mimic FirebaseUser
 };
 
 interface AuthContextType {
@@ -36,15 +35,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Error during sign-in:", error);
+      if ((error as any).code === 'auth/popup-blocked') {
+        throw new Error("Popup blocked by browser. Please allow popups for this site.");
+      }
+      if ((error as any).code === 'auth/popup-closed-by-user') {
+        throw new Error("Sign-in popup was closed before completing. If you are seeing a blank screen, please ensure this development domain is added to your Firebase project's 'Authorized Domains' in the Authentication settings.");
+      }
       throw error;
     }
   };
   
-
   const firebaseSignOut = async () => {
     try {
       await signOut(auth);
-      // also clear admin bypass
       setIsAdminBypass(false);
       setCurrentUser(null);
     } catch (error) {
@@ -62,42 +65,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       };
       setCurrentUser(adminUser);
       setIsAdminBypass(true);
-      setLoading(false);
     } else {
       throw new Error('Incorrect password');
     }
   };
 
   useEffect(() => {
-    const adminBypassState = sessionStorage.getItem('isAdminBypass') === 'true';
-    if(adminBypassState) {
-        const adminUser: CustomUser = {
-            uid: 'admin-bypass-user',
-            displayName: 'Admin',
-            email: 'admin@example.com',
-            photoURL: null,
-          };
-        setCurrentUser(adminUser);
-        setIsAdminBypass(true);
-    }
-
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!sessionStorage.getItem('isAdminBypass')) {
+      // Don't persist admin bypass across reloads. It's a security risk.
+      if (!isAdminBypass) {
         setCurrentUser(user);
       }
       setLoading(false);
     });
     
     return unsubscribe;
-  }, []);
-
-
-  useEffect(() => {
-    if (isAdminBypass) {
-        sessionStorage.setItem('isAdminBypass', 'true');
-    } else {
-        sessionStorage.removeItem('isAdminBypass');
-    }
   }, [isAdminBypass]);
 
   const value = {
