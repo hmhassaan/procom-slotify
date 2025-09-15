@@ -25,7 +25,7 @@ export default function AddSchedulePage() {
   const { allCourses, timeSlots, addUser, loading } = useAppContext();
   const router = useRouter();
   const { toast } = useToast();
-  const { currentUser } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
 
   const [newUserName, setNewUserName] = useState("");
   const [newUserTeam, setNewUserTeam] = useState("");
@@ -35,12 +35,12 @@ export default function AddSchedulePage() {
   const [selectedCourses, setSelectedCourses] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    if (!currentUser) {
-      router.push("/");
-    } else {
+    if (!authLoading && !currentUser) {
+      router.push("/login");
+    } else if (currentUser) {
       setNewUserName(currentUser.displayName || "");
     }
-  }, [currentUser, router]);
+  }, [currentUser, authLoading, router]);
 
   const handleAddUser = async () => {
     if (!newUserName.trim()) {
@@ -91,20 +91,18 @@ export default function AddSchedulePage() {
 
   const isFormDisabled = timeSlots.length === 0;
   
-  if (loading) {
+  const pageLoading = loading || authLoading;
+
+  if (pageLoading) {
     return (
         <div className="flex items-center justify-center min-h-screen">
-          <p>Loading schedule...</p>
+          <p>Loading...</p>
         </div>
       );
   }
 
   if (!currentUser) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p>Redirecting to login...</p>
-      </div>
-    );
+    return null;
   }
 
   return (

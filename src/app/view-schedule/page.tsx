@@ -8,7 +8,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { User } from "@/app/types";
-import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 
@@ -22,14 +21,14 @@ export default function ViewSchedulePage() {
   const { users, timeSlots, slotCourses, loading } = useAppContext();
   const [teamFilter, setTeamFilter] = useState("All");
   const [positionFilter, setPositionFilter] = useState("All");
-  const { currentUser } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!currentUser) {
-      router.push("/");
+    if (!authLoading && !currentUser) {
+      router.push("/login");
     }
-  }, [currentUser, router]);
+  }, [currentUser, authLoading, router]);
 
   const filteredUsers = useMemo(() => {
     return users.filter(user =>
@@ -100,8 +99,10 @@ export default function ViewSchedulePage() {
   }, [filteredUsers, timeSlots, slotCourses]);
 
   const isScheduleEmpty = timeSlots.length === 0;
+  
+  const pageLoading = loading || authLoading;
 
-  if (loading) {
+  if (pageLoading) {
       return (
         <div className="flex items-center justify-center min-h-screen">
           <p>Loading schedule...</p>
@@ -110,11 +111,7 @@ export default function ViewSchedulePage() {
   }
 
   if (!currentUser) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p>Redirecting to login...</p>
-      </div>
-    );
+    return null;
   }
 
   return (

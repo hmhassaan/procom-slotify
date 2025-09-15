@@ -3,6 +3,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
 import { AppProvider } from '@/context/AppContext';
 import { AuthProvider } from '@/context/AuthContext';
+import Navbar from '@/components/Navbar';
 
 export const metadata: Metadata = {
   title: 'Course Extractor',
@@ -24,6 +25,7 @@ export default function RootLayout({
       <body className="font-body antialiased">
         <AuthProvider>
           <AppProvider>
+            <Navbar />
             {children}
           </AppProvider>
         </AuthProvider>

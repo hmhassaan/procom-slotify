@@ -51,16 +51,15 @@ export default function AdminPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const { currentUser, isAdminBypass } = useAuth();
+  const { currentUser, isAdminBypass, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    // A real app would have proper role-based access control.
-    // For this demo, we allow access if the user is the admin bypass user.
-    if (!currentUser || !isAdminBypass) {
+    if (!authLoading && !isAdminBypass) {
+      toast({ variant: "destructive", title: "Unauthorized", description: "You do not have access to this page." });
       router.push("/");
     }
-  }, [currentUser, isAdminBypass, router]);
+  }, [currentUser, isAdminBypass, authLoading, router, toast]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -176,7 +175,9 @@ export default function AdminPage() {
     event.target.value = "";
   };
   
-  if (loading) {
+  const pageLoading = loading || authLoading;
+
+  if (pageLoading) {
      return (
         <div className="flex items-center justify-center min-h-screen">
           <p>Loading...</p>
@@ -185,11 +186,7 @@ export default function AdminPage() {
   }
 
   if (!currentUser || !isAdminBypass) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p>Redirecting...</p>
-      </div>
-    );
+    return null;
   }
 
   return (

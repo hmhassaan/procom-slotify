@@ -30,16 +30,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signIn = async () => {
     const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({
-      'hd': 'nu.edu.pk'
-    });
+    // Hint domain restriction (not a hard block; true blocking requires Security Rules/Cloud Functions)
+    provider.setCustomParameters({ hd: "nu.edu.pk", prompt: "select_account" });
+  
+    const { setPersistence, browserLocalPersistence, signInWithPopup, signInWithRedirect, browserPopupRedirectResolver } =
+      await import("firebase/auth");
+  
+    await setPersistence(auth, browserLocalPersistence);
+  
     try {
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error("Error during sign-in:", error);
-      throw error;
+      await signInWithPopup(auth, provider, browserPopupRedirectResolver);
+    } catch (e: any) {
+      // Common dev causes: popup blocked/closed, or another popup in progress
+      if (e?.code === "auth/popup-closed-by-user" || e?.code === "auth/cancelled-popup-request") {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+      if (e?.code === "auth/unauthorized-domain") {
+        console.error("Add your dev host to Firebase Auth → Settings → Authorized domains.");
+      }
+      console.error("Error during sign-in:", e);
+      throw e;
     }
   };
+  
 
   const firebaseSignOut = async () => {
     try {
@@ -69,14 +83,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    const adminBypassState = sessionStorage.getItem('isAdminBypass') === 'true';
+    if(adminBypassState) {
+        const adminUser: CustomUser = {
+            uid: 'admin-bypass-user',
+            displayName: 'Admin',
+            email: 'admin@example.com',
+            photoURL: null,
+          };
+        setCurrentUser(adminUser);
+        setIsAdminBypass(true);
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!isAdminBypass) {
+      if (!sessionStorage.getItem('isAdminBypass')) {
         setCurrentUser(user);
       }
       setLoading(false);
     });
-
+    
     return unsubscribe;
+  }, []);
+
+
+  useEffect(() => {
+    if (isAdminBypass) {
+        sessionStorage.setItem('isAdminBypass', 'true');
+    } else {
+        sessionStorage.removeItem('isAdminBypass');
+    }
   }, [isAdminBypass]);
 
   const value = {
