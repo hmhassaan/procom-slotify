@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { LogOut, Home, CalendarPlus, CalendarCheck, UserShield } from "lucide-react";
+import { LogOut, Home, CalendarPlus, CalendarCheck, Shield } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 
@@ -29,7 +29,7 @@ export default function Navbar() {
   ];
 
   if (isAdminBypass) {
-    navItems.push({ href: "/admin", label: "Admin", icon: UserShield });
+    navItems.push({ href: "/admin", label: "Admin", icon: Shield });
   }
 
   return (
