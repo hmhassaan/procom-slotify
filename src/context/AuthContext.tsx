@@ -1,9 +1,23 @@
-
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, User as FirebaseUser } from "firebase/auth";
-import { auth } from '@/lib/firebase';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  ReactNode,
+  useEffect,
+  useRef,
+} from "react";
+import {
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut,
+  User as FirebaseUser,
+} from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
 type CustomUser = {
   uid: string;
@@ -27,24 +41,38 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | CustomUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdminBypass, setIsAdminBypass] = useState(false);
+  const signingRef = useRef(false); // prevent overlapping sign-in attempts
 
   const signIn = async () => {
+    if (signingRef.current) return;
+    signingRef.current = true;
+
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ hd: "nu.edu.pk", prompt: "select_account" });
+
     try {
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error during sign-in:", error);
-      if ((error as any).code === 'auth/popup-blocked') {
-        throw new Error("Popup blocked by browser. Please allow popups for this site.");
+
+      // If the popup can’t complete (most common on dev hosts), fall back to redirect.
+      if (
+        error?.code === "auth/popup-blocked" ||
+        error?.code === "auth/popup-closed-by-user" ||
+        error?.code === "auth/cancelled-popup-request"
+      ) {
+        await signInWithRedirect(auth, provider);
+        return; // page will navigate; no need to unset signingRef here
       }
-      if ((error as any).code === 'auth/popup-closed-by-user') {
-        throw new Error("Sign-in popup was closed before completing. If you are seeing a blank screen, please ensure this development domain is added to your Firebase project's 'Authorized Domains' in the Authentication settings.");
-      }
+
+      // Surface other errors
       throw error;
+    } finally {
+      // If we didn’t redirect, clear the flag
+      signingRef.current = false;
     }
   };
-  
+
   const firebaseSignOut = async () => {
     try {
       await signOut(auth);
@@ -56,17 +84,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const adminLogin = (password: string) => {
-    if (password === 'ViratKohli18') {
+    if (password === "ViratKohli18") {
       const adminUser: CustomUser = {
-        uid: 'admin-bypass-user',
-        displayName: 'Admin',
-        email: 'admin@example.com',
+        uid: "admin-bypass-user",
+        displayName: "Admin",
+        email: "admin@example.com",
         photoURL: null,
       };
       setCurrentUser(adminUser);
       setIsAdminBypass(true);
     } else {
-      throw new Error('Incorrect password');
+      throw new Error("Incorrect password");
     }
   };
 
@@ -78,7 +106,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
       setLoading(false);
     });
-    
+
+    // Complete any pending redirect-based sign-in (no-op if none)
+    getRedirectResult(auth).catch(() => {
+      // Ignore "no redirect" or benign cases
+    });
+
     return unsubscribe;
   }, [isAdminBypass]);
 
@@ -101,7 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };

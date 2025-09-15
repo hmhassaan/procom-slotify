@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -16,7 +15,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!authLoading && !currentUser) {
-      router.push('/login');
+      router.push("/login");
     }
   }, [currentUser, authLoading, router]);
 
@@ -25,7 +24,7 @@ export default function Home() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-          <p>Loading...</p>
+        <p>Loading...</p>
       </div>
     );
   }
@@ -34,6 +33,11 @@ export default function Home() {
     return null; // or a redirect component
   }
 
+  const name =
+    (currentUser as any)?.displayName ??
+    (currentUser as any)?.email ??
+    "there";
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background -mt-16">
       <div className="text-center max-w-2xl mx-auto p-4">
@@ -41,7 +45,7 @@ export default function Home() {
           Welcome to Course Extractor
         </h1>
         <p className="text-muted-foreground mt-3">
-          {`What would you like to do, ${currentUser.displayName}?`}
+          {`What would you like to do, ${name}?`}
         </p>
       </div>
 
