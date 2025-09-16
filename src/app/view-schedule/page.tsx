@@ -5,22 +5,22 @@ import { useState, useMemo, useEffect } from "react";
 import { useAppContext } from "@/context/AppContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { User } from "@/app/types";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
+import { MultiSelect } from "@/components/ui/multi-select";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-const teams = ["All", "ExCom/Core", "CS Competitions", "AI Competitions", "Web Development", "Automation"];
-const positions = ["All", "Executive", "Mentor", "Head", "Co-head", "Deputy Head", "Module Head", "Module Cohead", "Member"];
+const teams = ["ExCom/Core", "CS Competitions", "AI Competitions", "Web Development", "Automation"];
+const positions = ["Executive", "Mentor", "Head", "Co-head", "Deputy Head", "Module Head", "Module Cohead", "Member"];
 
 const isLab = (name: string) => /\blab\b/i.test(name);
 
 export default function ViewSchedulePage() {
   const { users, timeSlots, slotCourses, loading } = useAppContext();
-  const [teamFilter, setTeamFilter] = useState("All");
-  const [positionFilter, setPositionFilter] = useState("All");
+  const [teamFilters, setTeamFilters] = useState<string[]>([]);
+  const [positionFilters, setPositionFilters] = useState<string[]>([]);
   const { currentUser, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -32,10 +32,10 @@ export default function ViewSchedulePage() {
 
   const filteredUsers = useMemo(() => {
     return users.filter(user =>
-      (teamFilter === "All" || user.team === teamFilter) &&
-      (positionFilter === "All" || user.position === positionFilter)
+      (teamFilters.length === 0 || teamFilters.includes(user.team)) &&
+      (positionFilters.length === 0 || positionFilters.includes(user.position))
     );
-  }, [users, teamFilter, positionFilter]);
+  }, [users, teamFilters, positionFilters]);
 
   const availability = useMemo(() => {
     const availabilityData: Record<string, Record<string, { available: User[], unavailable: User[] }>> = {};
@@ -120,22 +120,20 @@ export default function ViewSchedulePage() {
         <CardHeader>
           <CardTitle>Team Schedule</CardTitle>
           <div className="flex flex-col sm:flex-row gap-4 mt-4">
-            <Select value={teamFilter} onValueChange={setTeamFilter}>
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue placeholder="Filter by team" />
-              </SelectTrigger>
-              <SelectContent>
-                {teams.map(team => <SelectItem key={team} value={team}>{team}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={positionFilter} onValueChange={setPositionFilter}>
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue placeholder="Filter by position" />
-              </SelectTrigger>
-              <SelectContent>
-                {positions.map(pos => <SelectItem key={pos} value={pos}>{pos}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <MultiSelect
+              options={teams}
+              selected={teamFilters}
+              onChange={setTeamFilters}
+              placeholder="Filter by team"
+              className="w-full sm:w-[250px]"
+            />
+            <MultiSelect
+              options={positions}
+              selected={positionFilters}
+              onChange={setPositionFilters}
+              placeholder="Filter by position"
+              className="w-full sm:w-[250px]"
+            />
           </div>
         </CardHeader>
         <CardContent>
