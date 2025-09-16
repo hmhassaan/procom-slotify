@@ -273,7 +273,8 @@ export default function AdminPage() {
                   users.map((user) => (
                     <div key={user.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                       <div>
-                        <p className="font-semibold">{user.name}</p>
+                        <p className="font-semibold">{user.name} ({user.nuId})</p>
+                        <p className="text-sm text-muted-foreground">{user.email}</p>
                         <p className="text-sm text-muted-foreground">{user.team} - {user.position}</p>
                         <p className="text-sm text-muted-foreground">{user.courses.length} courses</p>
                         {user.offDays.length > 0 && (

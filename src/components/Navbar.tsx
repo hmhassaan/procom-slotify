@@ -37,7 +37,7 @@ export default function Navbar() {
       <div className="container flex h-14 items-center">
         <div className="mr-4 flex items-center">
           <Link href="/" className="mr-6 flex items-center space-x-2">
-            <span className="font-bold">Course Extractor</span>
+            <span className="font-bold">Procom Schedule Manager</span>
           </Link>
           <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
             {navItems.map(item => (

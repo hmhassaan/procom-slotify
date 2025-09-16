@@ -42,7 +42,7 @@ export default function Home() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-background -mt-16">
       <div className="text-center max-w-2xl mx-auto p-4">
         <h1 className="text-4xl md:text-5xl font-bold font-headline text-primary tracking-tight">
-          Welcome to Course Extractor
+          Welcome to Procom Schedule Manager
         </h1>
         <p className="text-muted-foreground mt-3">
           {`What would you like to do, ${name}?`}

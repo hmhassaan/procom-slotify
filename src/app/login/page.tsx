@@ -100,7 +100,7 @@ export default function LoginPage() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-background">
       <div className="text-center max-w-2xl mx-auto p-4">
         <h1 className="text-4xl md:text-5xl font-bold font-headline text-primary tracking-tight">
-          Course Extractor
+          Procom Schedule Manager
         </h1>
         <p className="text-muted-foreground mt-3">Please sign in to continue.</p>
       </div>

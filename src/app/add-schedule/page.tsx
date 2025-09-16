@@ -28,6 +28,8 @@ export default function AddSchedulePage() {
   const { currentUser, loading: authLoading } = useAuth();
 
   const [newUserName, setNewUserName] = useState("");
+  const [newUserNUID, setNewUserNUID] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserTeam, setNewUserTeam] = useState("");
   const [newUserPosition, setNewUserPosition] = useState("");
   const [offDays, setOffDays] = useState<Record<string, boolean>>({});
@@ -39,12 +41,17 @@ export default function AddSchedulePage() {
       router.push("/login");
     } else if (currentUser) {
       setNewUserName(currentUser.displayName || "");
+      setNewUserEmail(currentUser.email || "");
     }
   }, [currentUser, authLoading, router]);
 
   const handleAddUser = async () => {
     if (!newUserName.trim()) {
       toast({ variant: "destructive", title: "Error", description: "Please enter a user name." });
+      return;
+    }
+    if (!newUserNUID.trim()) {
+      toast({ variant: "destructive", title: "Error", description: "Please enter your NU-ID." });
       return;
     }
     const userCourses = Object.entries(selectedCourses)
@@ -73,6 +80,8 @@ export default function AddSchedulePage() {
     const newUser: User = {
       id: currentUser.uid,
       name: newUserName,
+      nuId: newUserNUID,
+      email: newUserEmail,
       courses: userCourses,
       team: newUserTeam,
       position: newUserPosition,
@@ -120,9 +129,19 @@ export default function AddSchedulePage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="user-name" className="font-semibold">Your Name</Label>
+              <Input id="user-name" placeholder="e.g., Alex Doe" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="mt-2" />
+            </div>
+            <div>
+              <Label htmlFor="user-email" className="font-semibold">Email</Label>
+              <Input id="user-email" value={newUserEmail} disabled className="mt-2" />
+            </div>
+          </div>
           <div>
-            <Label htmlFor="user-name" className="font-semibold">Your Name</Label>
-            <Input id="user-name" placeholder="e.g., Alex Doe" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="mt-2" />
+            <Label htmlFor="user-nuid" className="font-semibold">NU-ID</Label>
+            <Input id="user-nuid" placeholder="e.g., 20K-1234" value={newUserNUID} onChange={(e) => setNewUserNUID(e.target.value)} className="mt-2" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
