@@ -92,7 +92,6 @@ export function MultiSelect({
                       } else {
                         onChange([...selected, option]);
                       }
-                      setOpen(true);
                     }}
                   >
                     <Check
@@ -111,7 +110,7 @@ export function MultiSelect({
                 <CommandGroup>
                     <CommandItem
                         onSelect={() => onChange([])}
-                        className="justify-center text-center text-red-500"
+                        className="justify-center text-center text-destructive hover:text-destructive-foreground"
                     >
                         Clear all
                     </CommandItem>
