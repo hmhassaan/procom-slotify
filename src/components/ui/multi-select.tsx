@@ -8,18 +8,18 @@ import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-  DropdownMenuItem
-} from "@/components/ui/dropdown-menu"
-import { ScrollArea } from "./scroll-area"
 
 interface MultiSelectProps {
   options: string[];
@@ -36,21 +36,21 @@ export function MultiSelect({
   className,
   placeholder = "Select...",
 }: MultiSelectProps) {
-  const handleSelect = (option: string) => {
-    if (selected.includes(option)) {
-      onChange(selected.filter((item) => item !== option));
-    } else {
-      onChange([...selected, option]);
-    }
+  const [open, setOpen] = React.useState(false);
+
+  const handleUnselect = (item: string) => {
+    onChange(selected.filter((i) => i !== item));
   };
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
           role="combobox"
-          className={cn("w-full justify-between h-auto", className, selected.length > 0 && "h-auto")}
+          aria-expanded={open}
+          className={cn("w-full justify-between", className, selected.length > 0 ? "h-auto" : "h-10")}
+          onClick={() => setOpen(!open)}
         >
           <div className="flex gap-1 flex-wrap">
             {selected.length > 0 ? (
@@ -61,7 +61,7 @@ export function MultiSelect({
                   className="mr-1 mb-1"
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleSelect(item);
+                    handleUnselect(item);
                   }}
                 >
                   {item}
@@ -76,29 +76,50 @@ export function MultiSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-        <DropdownMenu open>
-            <DropdownMenuContent className="w-full border-none shadow-none">
-                <ScrollArea className="h-60">
-                    {options.map((option) => (
-                        <DropdownMenuCheckboxItem
-                            key={option}
-                            checked={selected.includes(option)}
-                            onCheckedChange={() => handleSelect(option)}
-                        >
-                            {option}
-                        </DropdownMenuCheckboxItem>
-                    ))}
-                </ScrollArea>
-                {selected.length > 0 && (
-                    <DropdownMenuItem
+        <Command>
+          <CommandInput placeholder="Search..." />
+          <CommandList>
+            <CommandEmpty>No results found.</CommandEmpty>
+            <CommandGroup>
+              {options.map((option) => {
+                const isSelected = selected.includes(option);
+                return (
+                  <CommandItem
+                    key={option}
+                    onSelect={() => {
+                      if (isSelected) {
+                        handleUnselect(option);
+                      } else {
+                        onChange([...selected, option]);
+                      }
+                      setOpen(true);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        isSelected ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {option}
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+            {selected.length > 0 && (
+                <>
+                <CommandGroup>
+                    <CommandItem
                         onSelect={() => onChange([])}
-                        className="text-red-500 focus:text-red-500"
+                        className="justify-center text-center text-red-500"
                     >
                         Clear all
-                    </DropdownMenuItem>
-                )}
-            </DropdownMenuContent>
-        </DropdownMenu>
+                    </CommandItem>
+                </CommandGroup>
+                </>
+            )}
+          </CommandList>
+        </Command>
       </PopoverContent>
     </Popover>
   );
