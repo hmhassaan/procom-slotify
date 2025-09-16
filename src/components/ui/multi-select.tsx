@@ -73,9 +73,7 @@ export function MultiSelect({
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-
-      {/* Add z-50 so it sits above Tabs/ScrollArea/Card overlays */}
-      <PopoverContent className="z-50 w-[var(--radix-popover-trigger-width)] p-0" align="start">
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 z-50" align="start">
         <Command>
           <CommandInput placeholder="Search..." />
           <CommandList>

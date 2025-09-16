@@ -117,7 +117,7 @@ export default function ViewSchedulePage() {
   return (
     <div className="container mx-auto p-4 md:p-8">
       <Card>
-        <CardHeader className="relative z-20">
+        <CardHeader>
           <CardTitle>Team Schedule</CardTitle>
           <div className="flex flex-col sm:flex-row gap-4 mt-4">
             <MultiSelect
@@ -136,7 +136,7 @@ export default function ViewSchedulePage() {
             />
           </div>
         </CardHeader>
-        <CardContent className="relative z-0">
+        <CardContent>
           {isScheduleEmpty ? (
             <div className="text-center py-10 text-muted-foreground">
               <p>The schedule is not available yet. Please ask an admin to upload the timetable.</p>
@@ -147,8 +147,8 @@ export default function ViewSchedulePage() {
                 {weekdays.map(day => <TabsTrigger key={day} value={day}>{day}</TabsTrigger>)}
               </TabsList>
               {weekdays.map(day => (
-                <TabsContent key={day} value={day} className="relative z-0">
-                  <ScrollArea className="h-[60vh] relative z-0">
+                <TabsContent key={day} value={day}>
+                  <ScrollArea className="h-[60vh]">
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-1">
                       {timeSlots.map(time => (
                         <div key={time} className="p-4 border rounded-lg">
