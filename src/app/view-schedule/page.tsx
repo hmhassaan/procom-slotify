@@ -147,7 +147,7 @@ export default function ViewSchedulePage() {
                 {weekdays.map(day => <TabsTrigger key={day} value={day}>{day}</TabsTrigger>)}
               </TabsList>
               {weekdays.map(day => (
-                <TabsContent key={day} value={day}>
+                <TabsContent key={day} value={day} className="relative z-10">
                   <ScrollArea className="h-[60vh]">
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-1">
                       {timeSlots.map(time => (
