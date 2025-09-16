@@ -1,4 +1,3 @@
-
 "use client"
 
 import * as React from "react"
@@ -50,7 +49,6 @@ export function MultiSelect({
           role="combobox"
           aria-expanded={open}
           className={cn("w-full justify-between", className, selected.length > 0 ? "h-auto" : "h-10")}
-          onClick={() => setOpen(!open)}
         >
           <div className="flex gap-1 flex-wrap">
             {selected.length > 0 ? (
@@ -75,7 +73,9 @@ export function MultiSelect({
           <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+
+      {/* Add z-50 so it sits above Tabs/ScrollArea/Card overlays */}
+      <PopoverContent className="z-50 w-[var(--radix-popover-trigger-width)] p-0" align="start">
         <Command>
           <CommandInput placeholder="Search..." />
           <CommandList>
@@ -105,17 +105,16 @@ export function MultiSelect({
                 );
               })}
             </CommandGroup>
+
             {selected.length > 0 && (
-                <>
-                <CommandGroup>
-                    <CommandItem
-                        onSelect={() => onChange([])}
-                        className="justify-center text-center text-destructive hover:text-destructive-foreground"
-                    >
-                        Clear all
-                    </CommandItem>
-                </CommandGroup>
-                </>
+              <CommandGroup>
+                <CommandItem
+                  onSelect={() => onChange([])}
+                  className="justify-center text-center text-destructive hover:text-destructive-foreground"
+                >
+                  Clear all
+                </CommandItem>
+              </CommandGroup>
             )}
           </CommandList>
         </Command>
