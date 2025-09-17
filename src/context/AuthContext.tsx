@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, {
@@ -21,6 +22,7 @@ import {
 import { auth } from "@/lib/firebase";
 import type { User } from "@/app/types";
 import { useAppContext } from "./AppContext";
+import { toast } from "@/hooks/use-toast";
 
 
 interface AuthContextType {
@@ -118,13 +120,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+      if (user && user.email && !user.email.endsWith('@nu.edu.pk')) {
+        firebaseSignOut();
+        toast({
+          variant: "destructive",
+          title: "Sign-in Failed",
+          description: "Please sign in with your NU Account (e.g., k224404@nu.edu.pk).",
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (!isAdminBypass) {
+        setCurrentUser(user);
+      }
       setLoading(false);
-      // Admin bypass is session-only, so it's not persisted here.
     });
 
     return unsubscribe;
-  }, []);
+  }, [isAdminBypass]);
   
   const currentUserProfile = useMemo(() => {
     if (isAdminBypass) {
