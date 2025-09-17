@@ -37,7 +37,6 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { PopoverContent } from "@/components/ui/popover";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const norm = (s: unknown) => (s ?? "").toString().replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
@@ -403,7 +402,7 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                     <UserCog className="h-4 w-4" />
                 </Button>
             </DialogTrigger>
-            <PopoverContent className="w-[var(--radix-popover-trigger-width)] z-51" sideOffset={5}>
+            <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Set Role for {user.name}</DialogTitle>
                     <DialogDescription>Assign an administrative role and team access for this user.</DialogDescription>
@@ -473,7 +472,7 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                     <Button onClick={handleSave} disabled={!canEditTarget}>Save Changes</Button>
                 </DialogFooter>
-            </PopoverContent>
+            </DialogContent>
         </Dialog>
     );
 };
