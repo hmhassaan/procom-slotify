@@ -45,7 +45,7 @@ export function MultiSelect({
   };
 
   const filteredOptions = options.filter(option =>
-    option.toLowerCase().includes(searchValue.toLowerCase())
+    option && option.toLowerCase().includes(searchValue.toLowerCase())
   );
 
   const handleClearAll = () => {
@@ -101,7 +101,7 @@ export function MultiSelect({
           </Button>
         </PopoverTrigger>
         <PopoverPortal>
-        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 z-51" sideOffset={5}>
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 z-[9999]" sideOffset={5}>
           <div className="flex flex-col">
             {/* Search Input */}
             <div className="flex items-center border-b px-3">
