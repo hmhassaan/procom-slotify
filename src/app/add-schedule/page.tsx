@@ -23,84 +23,118 @@ export default function AddSchedulePage() {
   const { allCourses, timeSlots, addUser, loading, teams, positions, subTeams } = useAppContext();
   const router = useRouter();
   const { toast } = useToast();
-  const { currentUser, loading: authLoading } = useAuth();
-
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserNUID, setNewUserNUID] = useState("");
-  const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserTeam, setNewUserTeam] = useState("");
-  const [newUserSubTeam, setNewUserSubTeam] = useState("");
-  const [newUserPosition, setNewUserPosition] = useState("");
+  const { currentUser, currentUserProfile, loading: authLoading } = useAuth();
+  
+  const [isEditing, setIsEditing] = useState(false);
+  const [userName, setUserName] = useState("");
+  const [userNUID, setUserNUID] = useState("");
+  const [userEmail, setUserEmail] = useState("");
+  const [userTeam, setUserTeam] = useState("");
+  const [userSubTeam, setUserSubTeam] = useState("");
+  const [userPosition, setUserPosition] = useState("");
   const [offDays, setOffDays] = useState<Record<string, boolean>>({});
   const [courseSearchTerm, setCourseSearchTerm] = useState("");
   const [selectedCourses, setSelectedCourses] = useState<Record<string, boolean>>({});
   
   const availableSubTeams = useMemo(() => {
-    return newUserTeam ? subTeams[newUserTeam] || [] : [];
-  }, [newUserTeam, subTeams]);
+    return userTeam ? subTeams[userTeam] || [] : [];
+  }, [userTeam, subTeams]);
 
 
   useEffect(() => {
     if (!authLoading && !currentUser) {
       router.push("/login");
-    } else if (currentUser) {
-      setNewUserName(currentUser.displayName || "");
-      setNewUserEmail(currentUser.email || "");
-    }
+    } 
   }, [currentUser, authLoading, router]);
 
   useEffect(() => {
-    // Reset subteam if team changes
-    setNewUserSubTeam("");
-  }, [newUserTeam]);
+    if (currentUserProfile) {
+        setIsEditing(true);
+        setUserName(currentUserProfile.name);
+        setUserNUID(currentUserProfile.nuId);
+        setUserEmail(currentUserProfile.email);
+        setUserTeam(currentUserProfile.team || "");
+        setUserSubTeam(currentUserProfile.subTeam || "");
+        setUserPosition(currentUserProfile.position);
+        
+        const userOffDays = currentUserProfile.offDays.reduce((acc, day) => {
+            acc[day] = true;
+            return acc;
+        }, {} as Record<string, boolean>);
+        setOffDays(userOffDays);
+
+        const userCourses = currentUserProfile.courses.reduce((acc, course) => {
+            acc[course] = true;
+            return acc;
+        }, {} as Record<string, boolean>);
+        setSelectedCourses(userCourses);
+
+    } else if (currentUser) {
+        // New user, prefill from auth
+        setIsEditing(false);
+        setUserName(currentUser.displayName || "");
+        setUserEmail(currentUser.email || "");
+    }
+  }, [currentUserProfile, currentUser]);
 
 
-  const handleAddUser = async () => {
-    if (!newUserName.trim()) {
+  useEffect(() => {
+    // Reset subteam if team changes and the current subteam is not valid for the new team
+    if (userTeam && !availableSubTeams.includes(userSubTeam)) {
+        setUserSubTeam("");
+    }
+  }, [userTeam, userSubTeam, availableSubTeams]);
+
+
+  const handleSaveSchedule = async () => {
+    if (!userName.trim()) {
       toast({ variant: "destructive", title: "Error", description: "Please enter a user name." });
       return;
     }
-    if (!newUserNUID.trim()) {
+    if (!userNUID.trim()) {
       toast({ variant: "destructive", title: "Error", description: "Please enter your NU-ID." });
       return;
     }
-    const userCourses = Object.entries(selectedCourses)
+    const courses = Object.entries(selectedCourses)
       .filter(([, isSelected]) => isSelected)
       .map(([course]) => course);
-    if (userCourses.length === 0) {
+    if (courses.length === 0) {
       toast({ variant: "destructive", title: "Error", description: "Please select at least one course." });
       return;
     }
-    if (!newUserTeam) {
+    if (!userTeam) {
       toast({ variant: "destructive", title: "Error", description: "Please select a team." });
       return;
     }
-    if (!newUserPosition) {
+    if (!userPosition) {
       toast({ variant: "destructive", title: "Error", description: "Please select a position." });
       return;
     }
 
-    const userOffDays = Object.entries(offDays).filter(([, isOff]) => isOff).map(([day]) => day);
+    const currentOffDays = Object.entries(offDays).filter(([, isOff]) => isOff).map(([day]) => day);
     
     if (!currentUser) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to add a schedule." });
       return;
     }
 
-    const newUser: User = {
+    const userData: User = {
       id: currentUser.uid,
-      name: newUserName,
-      nuId: newUserNUID,
-      email: newUserEmail,
-      courses: userCourses,
-      team: newUserTeam,
-      subTeam: newUserSubTeam || "",
-      position: newUserPosition,
-      offDays: userOffDays,
-      role: 'none'
+      name: userName,
+      nuId: userNUID,
+      email: userEmail,
+      courses: courses,
+      team: userTeam,
+      subTeam: userSubTeam || "",
+      position: userPosition,
+      offDays: currentOffDays,
+      // Preserve existing role, or set to 'none' for new users
+      role: currentUserProfile?.role || 'none',
+      // Preserve executive teams if they exist
+      ...(currentUserProfile?.role === 'executive' && { teams: currentUserProfile.teams })
     };
-    await addUser(newUser);
-    toast({ title: "User Added", description: `${newUser.name} has been added.` });
+    await addUser(userData); // addUser is actually a setDoc, so it works for create and update
+    toast({ title: isEditing ? "Schedule Updated" : "Schedule Added", description: `Your schedule has been ${isEditing ? 'updated' : 'saved'}.` });
     router.push("/view-schedule");
   };
 
@@ -110,7 +144,7 @@ export default function AddSchedulePage() {
     return allCourses.filter((c) => c.toLowerCase().includes(query));
   }, [allCourses, courseSearchTerm]);
 
-  const isFormDisabled = timeSlots.length === 0;
+  const isFormDisabled = timeSlots.length === 0 && !isEditing;
   
   const pageLoading = loading || authLoading;
 
@@ -132,33 +166,35 @@ export default function AddSchedulePage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <BookUser className="w-6 h-6" />
-            Add Your Schedule
+            {isEditing ? "Edit Your Schedule" : "Add Your Schedule"}
           </CardTitle>
           <CardDescription>
             {isFormDisabled
               ? "The admin has not uploaded a timetable yet. Please check back later."
-              : "Create your profile and select your courses."}
+              : isEditing 
+                ? "Update your profile, courses, and availability."
+                : "Create your profile and select your courses to get started."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="user-name" className="font-semibold">Your Name</Label>
-              <Input id="user-name" placeholder="e.g., Alex Doe" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="mt-2" />
+              <Input id="user-name" placeholder="e.g., Alex Doe" value={userName} onChange={(e) => setUserName(e.target.value)} className="mt-2" />
             </div>
             <div>
               <Label htmlFor="user-email" className="font-semibold">Email</Label>
-              <Input id="user-email" value={newUserEmail} disabled className="mt-2" />
+              <Input id="user-email" value={userEmail} disabled className="mt-2" />
             </div>
           </div>
           <div>
             <Label htmlFor="user-nuid" className="font-semibold">NU-ID</Label>
-            <Input id="user-nuid" placeholder="e.g., 20K-1234" value={newUserNUID} onChange={(e) => setNewUserNUID(e.target.value)} className="mt-2" />
+            <Input id="user-nuid" placeholder="e.g., 20K-1234" value={userNUID} onChange={(e) => setUserNUID(e.target.value)} className="mt-2" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="user-team" className="font-semibold">Team</Label>
-              <Select value={newUserTeam} onValueChange={setNewUserTeam}>
+              <Select value={userTeam} onValueChange={setUserTeam}>
                 <SelectTrigger id="user-team" className="mt-2">
                   <SelectValue placeholder="Select team" />
                 </SelectTrigger>
@@ -171,7 +207,7 @@ export default function AddSchedulePage() {
             </div>
              <div>
               <Label htmlFor="user-subteam" className="font-semibold">Sub-team (Optional)</Label>
-              <Select value={newUserSubTeam} onValueChange={setNewUserSubTeam} disabled={availableSubTeams.length === 0}>
+              <Select value={userSubTeam} onValueChange={setUserSubTeam} disabled={availableSubTeams.length === 0}>
                 <SelectTrigger id="user-subteam" className="mt-2">
                   <SelectValue placeholder="Select sub-team" />
                 </SelectTrigger>
@@ -185,10 +221,10 @@ export default function AddSchedulePage() {
           </div>
            <div>
               <Label htmlFor="user-position" className="font-semibold">Position</Label>
-              <Select value={newUserPosition} onValueChange={setNewUserPosition}>
+              <Select value={userPosition} onValueChange={setUserPosition}>
                 <SelectTrigger id="user-position" className="mt-2">
                   <SelectValue placeholder="Select position" />
-                </SelectTrigger>
+                </Trigger>
                 <SelectContent>
                   {positions.map((pos) => (
                     <SelectItem key={pos.id} value={pos.name}>{pos.name}</SelectItem>
@@ -242,9 +278,13 @@ export default function AddSchedulePage() {
               </div>
             </ScrollArea>
           </div>
-          <Button onClick={handleAddUser} className="w-full">Submit Schedule</Button>
+          <Button onClick={handleSaveSchedule} className="w-full">
+            {isEditing ? "Update Schedule" : "Submit Schedule"}
+          </Button>
         </CardContent>
       </Card>
     </div>
   );
 }
+
+    

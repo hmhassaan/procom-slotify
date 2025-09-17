@@ -34,7 +34,7 @@ export default function Navbar() {
   
   const navItems = [
     { href: "/", label: "Home", icon: Home },
-    { href: "/add-schedule", label: "Add Schedule", icon: CalendarPlus },
+    { href: "/add-schedule", label: "My Schedule", icon: CalendarPlus },
     { href: "/view-schedule", label: "View Schedule", icon: CalendarCheck },
   ];
 
@@ -122,3 +122,5 @@ export default function Navbar() {
     </header>
   );
 }
+
+    
