@@ -17,6 +17,16 @@ const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const isLab = (name: string) => /\blab\b/i.test(name);
 
+// Helper to get the current day for the tab default
+const getCurrentDay = () => {
+    const dayIndex = new Date().getDay(); // Sunday = 0, Monday = 1, etc.
+    if (dayIndex === 0 || dayIndex === 6) { // Sunday or Saturday
+        return "Monday";
+    }
+    return weekdays[dayIndex -1];
+};
+
+
 export default function ViewSchedulePage() {
   const { users, timeSlots, slotCourses, loading, teams, positions, subTeams } = useAppContext();
   const [teamFilters, setTeamFilters] = useState<string[]>([]);
@@ -226,12 +236,10 @@ export default function ViewSchedulePage() {
                 <p>The schedule is not available yet. Please ask an admin to upload the timetable.</p>
               </div>
             ) : (
-              <Tabs defaultValue="Monday">
-                <div className="overflow-x-auto">
-                    <TabsList className="w-full sm:w-auto">
-                        {weekdays.map(day => <TabsTrigger key={day} value={day}>{day}</TabsTrigger>)}
-                    </TabsList>
-                </div>
+              <Tabs defaultValue={getCurrentDay()}>
+                <TabsList className="w-full justify-start overflow-x-auto">
+                    {weekdays.map(day => <TabsTrigger key={day} value={day}>{day}</TabsTrigger>)}
+                </TabsList>
                 {weekdays.map(day => (
                   <TabsContent key={day} value={day} className="relative z-10">
                     <ScrollArea className="h-[60vh] -mx-6 px-6">
@@ -297,3 +305,5 @@ export default function ViewSchedulePage() {
     </TooltipProvider>
   );
 }
+
+    
