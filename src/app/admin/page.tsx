@@ -171,7 +171,8 @@ const CategoryManager = () => {
 
 const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) => {
     const { updateUser, teams } = useAppContext();
-    const { currentUserProfile, isUniversalAdmin, isExecutiveAdmin } = useAuth();
+    const { currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin } = useAuth();
+    const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
     const [selectedRole, setSelectedRole] = useState<UserRole>(user.role || 'none');
     const [selectedTeams, setSelectedTeams] = useState<string[]>(user.teams || (user.team ? [user.team] : []));
