@@ -224,7 +224,7 @@ export default function AddSchedulePage() {
               <Select value={userPosition} onValueChange={setUserPosition}>
                 <SelectTrigger id="user-position" className="mt-2">
                   <SelectValue placeholder="Select position" />
-                </Trigger>
+                </SelectTrigger>
                 <SelectContent>
                   {positions.map((pos) => (
                     <SelectItem key={pos.id} value={pos.name}>{pos.name}</SelectItem>
@@ -286,5 +286,3 @@ export default function AddSchedulePage() {
     </div>
   );
 }
-
-    
