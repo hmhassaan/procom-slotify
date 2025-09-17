@@ -42,6 +42,9 @@ import { PopoverContent } from "@/components/ui/popover";
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const norm = (s: unknown) => (s ?? "").toString().replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
 
+let idCounter = 0;
+const generateUniqueId = () => `${Date.now()}-${idCounter++}`;
+
 const SortablePositionItem = ({ position, onRemove, onEdit }: { position: Position; onRemove: (id: string) => void; onEdit: (position: Position) => void; }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: position.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -120,7 +123,7 @@ const CategoryManager = () => {
     if (currentPosition) { // Editing existing
         updatedPositions = positions.map(p => p.id === currentPosition.id ? { ...p, name: positionName, icon: positionIcon } : p);
     } else { // Adding new
-        const newPosition: Position = { id: Date.now().toString(), name: positionName.trim(), icon: positionIcon };
+        const newPosition: Position = { id: generateUniqueId(), name: positionName.trim(), icon: positionIcon };
         updatedPositions = [...positions, newPosition];
     }
 
