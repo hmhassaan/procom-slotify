@@ -37,6 +37,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { PopoverContent } from "@/components/ui/popover";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const norm = (s: unknown) => (s ?? "").toString().replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
@@ -219,7 +220,7 @@ const CategoryManager = () => {
             </div>
             <ScrollArea className="h-40 rounded-md border p-2">
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                    <SortableContext items={positions} strategy={verticalListSortingStrategy}>
+                    <SortableContext items={positions.map(p => p.id)} strategy={verticalListSortingStrategy}>
                         <div className="flex flex-col gap-2">
                             {positions.map(pos => (
                                 <SortablePositionItem key={pos.id} position={pos} onRemove={handleRemovePosition} onEdit={handleOpenPositionDialog} />
@@ -288,7 +289,7 @@ const CategoryManager = () => {
 
 
 const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) => {
-    const { updateUser, teams } = useAppContext();
+    const { updateUser, teams, subTeams } = useAppContext();
     const { currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin } = useAuth();
     const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
@@ -303,24 +304,30 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
         setSelectedTeam(user.team || '');
         setSelectedSubTeam(user.subTeam || '');
     }, [user, isOpen]);
+    
+    const availableSubTeamsForTeam = useMemo(() => {
+        return selectedTeam ? subTeams[selectedTeam] || [] : [];
+    }, [selectedTeam, subTeams]);
+
 
     const handleSave = async () => {
         const updatedUserData: Partial<User> = { role: selectedRole };
         if (selectedRole === 'executive') {
             updatedUserData.teams = selectedTeams;
-            updatedUserData.team = undefined;
-        } else if (selectedRole === 'team' || selectedRole === 'subTeam') {
+            updatedUserData.team = undefined; // clear single team
+            updatedUserData.subTeam = undefined; // clear sub team
+        } else if (selectedRole === 'team') {
             updatedUserData.team = selectedTeam;
-            updatedUserData.teams = undefined;
-            if (selectedRole === 'subTeam') {
-                updatedUserData.subTeam = selectedSubTeam;
-            } else {
-                 updatedUserData.subTeam = '';
-            }
-        } else {
+            updatedUserData.teams = undefined; // clear multi-teams
+            updatedUserData.subTeam = undefined; // clear sub team
+        } else if (selectedRole === 'subTeam') {
+            updatedUserData.team = selectedTeam;
+            updatedUserData.subTeam = selectedSubTeam;
+            updatedUserData.teams = undefined; // clear multi-teams
+        } else { // 'none'
             updatedUserData.team = selectedTeam || user.team;
-            updatedUserData.teams = undefined;
             updatedUserData.subTeam = selectedSubTeam || user.subTeam;
+            updatedUserData.teams = undefined;
         }
 
         try {
@@ -336,51 +343,57 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
     const canSetRole = (targetUser: User, role: UserRole) => {
         if (!currentUserProfile) return false;
         if (isUniversalAdmin) return true;
+        
         if (isExecutiveAdmin) {
             // Executive can't edit universal or other executives
             if (targetUser.role === 'universal' || targetUser.role === 'executive') return false;
-            // Executive can only assign team or subteam within their teams
-            return role === 'team' || role === 'subTeam';
+            // Can only assign roles to users within their managed teams
+            if (!currentUserProfile.teams?.includes(targetUser.team || '')) return false;
+            return role === 'team' || role === 'subTeam' || role === 'none';
         }
+        
         if (isTeamAdmin) {
-             // Team admin can't edit any admin
-            if (targetUser.role !== 'none') return false;
-             // Team admin can only assign subteam admin
-            return role === 'subTeam';
+             // Team admin can't edit any admin higher or equal
+            if (targetUser.role !== 'none' && targetUser.role !== 'subTeam') return false;
+            // Can only assign roles to users in their own team
+            if (targetUser.team !== currentUserProfile.team) return false;
+            return role === 'subTeam' || role === 'none';
         }
         return false;
     };
 
     const getRoleOptions = () => {
-        if (isUniversalAdmin) {
-            return [
-                { value: 'none', label: 'None' },
-                { value: 'universal', label: 'Universal Admin' },
-                { value: 'executive', label: 'Executive Admin' },
-                { value: 'team', label: 'Team Admin' },
-                { value: 'subTeam', label: 'Sub-team Admin' },
-            ];
-        }
+        const allRoles = [
+            { value: 'none', label: 'None' },
+            { value: 'universal', label: 'Universal Admin' },
+            { value: 'executive', label: 'Executive Admin' },
+            { value: 'team', label: 'Team Admin' },
+            { value: 'subTeam', label: 'Sub-team Admin' },
+        ];
+        
+        if (isUniversalAdmin) return allRoles;
+        
+        return allRoles.filter(opt => canSetRole(user, opt.value as UserRole) || opt.value === user.role);
+    }
+    
+    const canEditTarget = useMemo(() => {
+        if (!currentUserProfile) return false;
+        if (isUniversalAdmin) return true; // Universal can edit anyone
         if (isExecutiveAdmin) {
-            return [
-                 { value: 'none', label: 'None' },
-                 { value: 'team', label: 'Team Admin' },
-                 { value: 'subTeam', label: 'Sub-team Admin' },
-            ];
+            // Cannot edit universal or other executives
+            if (user.role === 'universal' || user.role === 'executive') return false;
+            // Can edit users within their teams
+            return (currentUserProfile.teams || []).includes(user.team || '');
         }
         if (isTeamAdmin) {
-            return [
-                { value: 'none', label: 'None' },
-                { value: 'subTeam', label: 'Sub-team Admin' },
-            ];
+            // Cannot edit universal, exec, or other team admins
+            if (user.role === 'universal' || user.role === 'executive' || user.role === 'team') return false;
+            // Can edit users within their own team
+            return user.team === currentUserProfile.team;
         }
-        return [{ value: 'none', label: 'None' }];
-    }
-
-    const isRoleDisabled = (role: UserRole) => !canSetRole(user, role);
-
-    const isTargetAdmin = user.role === 'universal' || user.role === 'executive';
-    const canEditTarget = isUniversalAdmin || (isExecutiveAdmin && !isTargetAdmin);
+        // Sub-team admins and regular users cannot edit roles.
+        return false;
+    }, [user, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin]);
 
 
     return (
@@ -398,13 +411,13 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                 <div className="py-4 space-y-4">
                     <div>
                         <Label htmlFor="role-select">Admin Role</Label>
-                        <Select value={selectedRole} onValueChange={(v) => setSelectedRole(v as UserRole)}>
+                        <Select value={selectedRole} onValueChange={(v) => setSelectedRole(v as UserRole)} disabled={!canEditTarget}>
                             <SelectTrigger id="role-select">
                                 <SelectValue placeholder="Select a role" />
                             </SelectTrigger>
                             <SelectContent>
                                 {getRoleOptions().map(opt => (
-                                    <SelectItem key={opt.value} value={opt.value} disabled={isRoleDisabled(opt.value as UserRole)}>
+                                    <SelectItem key={opt.value} value={opt.value} disabled={!canSetRole(user, opt.value as UserRole)}>
                                         {opt.label}
                                     </SelectItem>
                                 ))}
@@ -412,7 +425,7 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                         </Select>
                     </div>
 
-                    {selectedRole === 'executive' && (
+                    {selectedRole === 'executive' && isUniversalAdmin && (
                         <div>
                             <Label>Teams</Label>
                             <MultiSelect 
@@ -427,7 +440,7 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                     {(selectedRole === 'team' || selectedRole === 'subTeam' || selectedRole === 'none') && (
                          <div>
                             <Label>Team</Label>
-                            <Select value={selectedTeam} onValueChange={setSelectedTeam}>
+                            <Select value={selectedTeam} onValueChange={setSelectedTeam} disabled={!canEditTarget || selectedRole === 'executive'}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Select a team" />
                                 </SelectTrigger>
@@ -441,15 +454,24 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                     )}
                     
                     {selectedRole === 'subTeam' && (
-                        <div>
+                         <div>
                             <Label>Sub-team</Label>
-                             <Input value={user.subTeam || ''} readOnly disabled />
+                             <Select value={selectedSubTeam} onValueChange={setSelectedSubTeam} disabled={!canEditTarget || !selectedTeam}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select a sub-team" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                   {availableSubTeamsForTeam.map(st => (
+                                        <SelectItem key={st} value={st}>{st}</SelectItem>
+                                   ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                     )}
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                    <Button onClick={handleSave}>Save Changes</Button>
+                    <Button onClick={handleSave} disabled={!canEditTarget}>Save Changes</Button>
                 </DialogFooter>
             </PopoverContent>
         </Dialog>
@@ -463,7 +485,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
 
   const { toast } = useToast();
-  const { currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges, loading: authLoading } = useAuth();
+  const { currentUser, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges, loading: authLoading } = useAuth();
   const router = useRouter();
   
   const [refreshKey, setRefreshKey] = useState(0);
@@ -605,8 +627,8 @@ export default function AdminPage() {
   }, [users, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
 
   const canDeleteUser = (userToDelete: User) => {
-    if (!currentUserProfile) return false;
-    if (isUniversalAdmin) return userToDelete.id !== currentUserProfile.id; // Cannot delete self
+    if (!currentUserProfile || userToDelete.id === currentUser?.uid) return false; // Cannot delete self
+    if (isUniversalAdmin) return true;
     if (isExecutiveAdmin) {
         // Can't delete universal or other executives
         if (userToDelete.role === 'universal' || userToDelete.role === 'executive') return false;
