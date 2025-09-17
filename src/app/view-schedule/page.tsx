@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -9,6 +10,8 @@ import type { User } from "@/app/types";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { MultiSelect } from "@/components/ui/multi-select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -163,79 +166,111 @@ export default function ViewSchedulePage() {
   }
 
   return (
-    <div className="container mx-auto p-4 md:p-8">
-      <Card>
-        <CardHeader>
-          <CardTitle>Team Schedule</CardTitle>
-          <CardDescription>
-            View team availability based on selected filters.
-          </CardDescription>
-          {hasAdminPrivileges && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-                <MultiSelect
-                    options={availableTeams}
-                    selected={teamFilters}
-                    onChange={setTeamFilters}
-                    placeholder="Filter by team"
-                />
-                <MultiSelect
-                    options={availableSubTeams}
-                    selected={subTeamFilters}
-                    onChange={setSubTeamFilters}
-                    placeholder="Filter by sub-team"
-                />
-                <MultiSelect
-                    options={positions}
-                    selected={positionFilters}
-                    onChange={setPositionFilters}
-                    placeholder="Filter by position"
-                />
-            </div>
-          )}
-        </CardHeader>
-        <CardContent>
-          {isScheduleEmpty ? (
-            <div className="text-center py-10 text-muted-foreground">
-              <p>The schedule is not available yet. Please ask an admin to upload the timetable.</p>
-            </div>
-          ) : (
-            <Tabs defaultValue="Monday">
-              <TabsList>
-                {weekdays.map(day => <TabsTrigger key={day} value={day}>{day}</TabsTrigger>)}
-              </TabsList>
-              {weekdays.map(day => (
-                <TabsContent key={day} value={day}>
-                  <ScrollArea className="h-[60vh]">
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-1">
-                      {timeSlots.map(time => (
-                        <div key={time} className="p-4 border rounded-lg">
-                          <h4 className="font-semibold border-b pb-2 mb-2">{time}</h4>
-                          <div className="space-y-2">
-                            <h5 className="font-medium text-green-600">Available ({availability[day]?.[time]?.available.length})</h5>
-                            {availability[day]?.[time]?.available.length > 0 ? (
-                              availability[day][time].available.map(user => (
-                                <div key={user.id} className="text-sm p-1 bg-green-100 rounded">{user.name}</div>
-                              ))
-                            ) : <p className="text-xs text-muted-foreground">None</p>}
+    <TooltipProvider>
+      <div className="container mx-auto p-4 md:p-8">
+        <Card className="overflow-hidden">
+          <CardHeader>
+            <CardTitle>Team Schedule</CardTitle>
+            <CardDescription>
+              View team availability based on selected filters.
+            </CardDescription>
+            {hasAdminPrivileges && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+                  <MultiSelect
+                      options={availableTeams}
+                      selected={teamFilters}
+                      onChange={setTeamFilters}
+                      placeholder="Filter by team..."
+                  />
+                  <MultiSelect
+                      options={availableSubTeams}
+                      selected={subTeamFilters}
+                      onChange={setSubTeamFilters}
+                      placeholder="Filter by sub-team..."
+                  />
+                  <MultiSelect
+                      options={positions}
+                      selected={positionFilters}
+                      onChange={setPositionFilters}
+                      placeholder="Filter by position..."
+                  />
+              </div>
+            )}
+          </CardHeader>
+          <CardContent>
+            {isScheduleEmpty ? (
+              <div className="text-center py-10 text-muted-foreground">
+                <p>The schedule is not available yet. Please ask an admin to upload the timetable.</p>
+              </div>
+            ) : (
+              <Tabs defaultValue="Monday">
+                <div className="overflow-x-auto">
+                    <TabsList className="w-full sm:w-auto">
+                        {weekdays.map(day => <TabsTrigger key={day} value={day}>{day}</TabsTrigger>)}
+                    </TabsList>
+                </div>
+                {weekdays.map(day => (
+                  <TabsContent key={day} value={day} className="relative">
+                    <ScrollArea className="h-[60vh] -mx-6 px-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 py-4">
+                        {timeSlots.map(time => (
+                          <div key={time} className="border rounded-lg bg-card shadow-sm">
+                            <div className="p-4 border-b">
+                                <h4 className="font-semibold text-center text-sm">{time}</h4>
+                            </div>
+                            <div className="p-4 space-y-4">
+                              <div>
+                                <h5 className="font-medium text-sm text-green-600 mb-2">Available ({availability[day]?.[time]?.available.length})</h5>
+                                <div className="space-y-2">
+                                  {availability[day]?.[time]?.available.length > 0 ? (
+                                    availability[day][time].available.map(user => (
+                                      <Tooltip key={user.id} delayDuration={100}>
+                                        <TooltipTrigger asChild>
+                                          <Badge variant="outline" className="w-full justify-start font-normal bg-green-50 border-green-200 text-green-800">
+                                            {user.name}
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>{user.nuId}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    ))
+                                  ) : <p className="text-xs text-muted-foreground italic">None available</p>}
+                                </div>
+                              </div>
+                              <div >
+                                <h5 className="font-medium text-sm text-red-600 mb-2">Unavailable ({availability[day]?.[time]?.unavailable.length})</h5>
+                                 <div className="space-y-2">
+                                    {availability[day]?.[time]?.unavailable.length > 0 ? (
+                                    availability[day][time].unavailable.map(user => (
+                                       <Tooltip key={user.id} delayDuration={100}>
+                                        <TooltipTrigger asChild>
+                                          <Badge variant="outline" className="w-full justify-start font-normal bg-red-50 border-red-200 text-red-800">
+                                            {user.name}
+                                          </Badge>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>{user.nuId}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    ))
+                                    ) : <p className="text-xs text-muted-foreground italic">All available</p>}
+                                 </div>
+                              </div>
+                            </div>
                           </div>
-                          <div className="space-y-2 mt-4">
-                            <h5 className="font-medium text-red-600">Unavailable ({availability[day]?.[time]?.unavailable.length})</h5>
-                            {availability[day]?.[time]?.unavailable.length > 0 ? (
-                              availability[day][time].unavailable.map(user => (
-                                <div key={user.id} className="text-sm p-1 bg-red-100 rounded">{user.name}</div>
-                              ))
-                            ) : <p className="text-xs text-muted-foreground">None</p>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                </TabsContent>
-              ))}
-            </Tabs>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </TabsContent>
+                ))}
+              </Tabs>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </TooltipProvider>
   );
 }
+
+    
