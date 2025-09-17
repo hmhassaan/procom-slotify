@@ -1,24 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { Check, ChevronsUpDown, X } from "lucide-react"
-
+import { Check, ChevronsUpDown, X, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { Input } from "@/components/ui/input"
 
 interface MultiSelectProps {
   options: string[];
@@ -36,17 +28,27 @@ export function MultiSelect({
   placeholder = "Select...",
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false);
+  const [searchValue, setSearchValue] = React.useState("");
 
   const handleUnselect = (item: string) => {
     onChange(selected.filter((i) => i !== item));
   };
 
-  const handleSelect = (currentValue: string) => {
-    if (selected.includes(currentValue)) {
-      handleUnselect(currentValue);
+  const handleSelect = (option: string) => {
+    if (selected.includes(option)) {
+      handleUnselect(option);
     } else {
-      onChange([...selected, currentValue]);
+      onChange([...selected, option]);
     }
+  };
+
+  const filteredOptions = options.filter(option =>
+    option.toLowerCase().includes(searchValue.toLowerCase())
+  );
+
+  const handleClearAll = () => {
+    onChange([]);
+    setSearchValue("");
   };
 
   return (
@@ -57,15 +59,19 @@ export function MultiSelect({
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className={cn("w-full justify-between", className, selected.length > 0 ? "h-auto" : "h-10")}
+            className={cn(
+              "w-full justify-between text-left font-normal",
+              selected.length > 0 ? "h-auto min-h-10" : "h-10",
+              className
+            )}
           >
-            <div className="flex gap-1 flex-wrap">
+            <div className="flex gap-1 flex-wrap max-w-full">
               {selected.length > 0 ? (
                 selected.map((item) => (
                   <Badge
                     variant="secondary"
                     key={item}
-                    className="mr-1 mb-1 cursor-pointer"
+                    className="mr-1 mb-1"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -73,7 +79,16 @@ export function MultiSelect({
                     }}
                   >
                     {item}
-                    <X className="ml-1 h-3 w-3" />
+                    <button
+                      className="ml-1 hover:bg-secondary-foreground/20 rounded-full"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleUnselect(item);
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
                   </Badge>
                 ))
               ) : (
@@ -83,48 +98,64 @@ export function MultiSelect({
             <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-full p-0" align="start">
-          <Command>
-            <CommandInput placeholder="Search..." />
-            <CommandList>
-              <CommandEmpty>No results found.</CommandEmpty>
-              <CommandGroup>
-                {options.map((option) => {
-                  const isSelected = selected.includes(option);
-                  return (
-                    <CommandItem
-                      key={option}
-                      value={option}
-                      onSelect={(currentValue) => {
-                        handleSelect(currentValue);
-                      }}
-                      className="cursor-pointer"
-                    >
-                      <Check
+        <PopoverContent className="w-full p-0" align="start" sideOffset={4}>
+          <div className="flex flex-col">
+            {/* Search Input */}
+            <div className="flex items-center border-b px-3">
+              <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+              <Input
+                placeholder="Search..."
+                value={searchValue}
+                onChange={(e) => setSearchValue(e.target.value)}
+                className="border-0 focus-visible:ring-0 shadow-none"
+              />
+            </div>
+
+            {/* Options List */}
+            <div className="max-h-60 overflow-auto">
+              {filteredOptions.length === 0 ? (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  No results found.
+                </div>
+              ) : (
+                <div className="p-1">
+                  {filteredOptions.map((option) => {
+                    const isSelected = selected.includes(option);
+                    return (
+                      <div
+                        key={option}
                         className={cn(
-                          "mr-2 h-4 w-4",
-                          isSelected ? "opacity-100" : "opacity-0"
+                          "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
+                          isSelected && "bg-accent"
                         )}
-                      />
-                      {option}
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
+                        onClick={() => handleSelect(option)}
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            isSelected ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        {option}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              
+              {/* Clear All Option */}
               {selected.length > 0 && (
-                <CommandGroup>
-                  <CommandItem
-                    onSelect={() => {
-                      onChange([]);
-                    }}
-                    className="justify-center text-center text-destructive hover:text-destructive-foreground cursor-pointer"
+                <div className="border-t p-1">
+                  <div
+                    className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-destructive hover:text-destructive-foreground text-destructive justify-center font-medium"
+                    onClick={handleClearAll}
                   >
                     Clear all
-                  </CommandItem>
-                </CommandGroup>
+                  </div>
+                </div>
               )}
-            </CommandList>
-          </Command>
+            </div>
+          </div>
         </PopoverContent>
       </Popover>
     </div>
