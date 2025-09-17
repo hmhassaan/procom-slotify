@@ -4,9 +4,9 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { User, CategoryData, UserRole } from '@/app/types';
+import type { User, CategoryData, UserRole, Position } from '@/app/types';
 
-export type { User, CategoryData, UserRole };
+export type { User, CategoryData, UserRole, Position };
 export type SlotCoursesIndex = Record<string, Record<string, string[]>>;
 export type Schedule = { [day: string]: { [time: string]: string | undefined }; };
 

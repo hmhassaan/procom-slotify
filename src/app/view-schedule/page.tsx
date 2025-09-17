@@ -6,7 +6,7 @@ import { useAppContext } from "@/context/AppContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { User } from "@/app/types";
+import type { User, Position } from "@/app/types";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { MultiSelect } from "@/components/ui/multi-select";
@@ -63,6 +63,8 @@ export default function ViewSchedulePage() {
     }
     return [];
   }, [teamFilters, subTeams, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
+  
+  const positionOptions = useMemo(() => positions.map(p => p.name), [positions]);
 
   const filteredUsers = useMemo(() => {
     let usersToFilter: User[] = [];
@@ -148,6 +150,9 @@ export default function ViewSchedulePage() {
 
     return availabilityData;
   }, [filteredUsers, timeSlots, slotCourses]);
+  
+  const positionMap = useMemo(() => new Map(positions.map(p => [p.name, p.icon])), [positions]);
+
 
   const isScheduleEmpty = timeSlots.length === 0;
 
@@ -189,7 +194,7 @@ export default function ViewSchedulePage() {
                       placeholder="Filter by sub-team..."
                   />
                   <MultiSelect
-                      options={positions}
+                      options={positionOptions}
                       selected={positionFilters}
                       onChange={setPositionFilters}
                       placeholder="Filter by position..."
@@ -227,6 +232,7 @@ export default function ViewSchedulePage() {
                                       <Tooltip key={user.id} delayDuration={100}>
                                         <TooltipTrigger asChild>
                                           <Badge variant="outline" className="w-full justify-start font-normal bg-green-50 border-green-200 text-green-800">
+                                             {positionMap.get(user.position) && <span className="mr-2">{positionMap.get(user.position)}</span>}
                                             {user.name}
                                           </Badge>
                                         </TooltipTrigger>
@@ -246,6 +252,7 @@ export default function ViewSchedulePage() {
                                        <Tooltip key={user.id} delayDuration={100}>
                                         <TooltipTrigger asChild>
                                           <Badge variant="outline" className="w-full justify-start font-normal bg-red-50 border-red-200 text-red-800">
+                                            {positionMap.get(user.position) && <span className="mr-2">{positionMap.get(user.position)}</span>}
                                             {user.name}
                                           </Badge>
                                         </TooltipTrigger>

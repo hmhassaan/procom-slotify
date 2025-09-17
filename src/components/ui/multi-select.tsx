@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -9,6 +10,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  PopoverPortal,
 } from "@/components/ui/popover"
 import { Input } from "@/components/ui/input"
 
@@ -53,7 +55,7 @@ export function MultiSelect({
 
   return (
     <div className="relative">
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={setOpen} modal={true}>
         <PopoverTrigger asChild>
           <Button
             variant="outline"
@@ -98,7 +100,8 @@ export function MultiSelect({
             <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-full p-0" align="start" sideOffset={4}>
+        <PopoverPortal>
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 z-51" sideOffset={5}>
           <div className="flex flex-col">
             {/* Search Input */}
             <div className="flex items-center border-b px-3">
@@ -157,6 +160,7 @@ export function MultiSelect({
             </div>
           </div>
         </PopoverContent>
+        </PopoverPortal>
       </Popover>
     </div>
   );

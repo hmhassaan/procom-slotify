@@ -191,7 +191,7 @@ export default function AddSchedulePage() {
                 </SelectTrigger>
                 <SelectContent>
                   {positions.map((pos) => (
-                    <SelectItem key={pos} value={pos}>{pos}</SelectItem>
+                    <SelectItem key={pos.id} value={pos.name}>{pos.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import * as xlsx from "xlsx";
-import { FileUp, Loader2, AlertCircle, Users, Trash2, Tag, PlusCircle, Building2, Briefcase, UserCog, Shield, ShieldCheck, ShieldAlert, Crown } from "lucide-react";
+import { FileUp, Loader2, AlertCircle, Users, Trash2, Tag, PlusCircle, Building2, Briefcase, UserCog, Shield, ShieldCheck, ShieldAlert, Crown, GripVertical, Pencil } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppContext } from "@/context/AppContext";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import type { SlotCoursesIndex, CategoryData, User, UserRole } from "@/context/AppContext";
+import type { SlotCoursesIndex, CategoryData, User, UserRole, Position } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -20,16 +20,61 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { MultiSelect } from "@/components/ui/multi-select";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const norm = (s: unknown) => (s ?? "").toString().replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+
+const SortablePositionItem = ({ position, onRemove, onEdit }: { position: Position; onRemove: (id: string) => void; onEdit: (position: Position) => void; }) => {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: position.id });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+  const { isUniversalAdmin } = useAuth();
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-2 bg-muted rounded-lg p-2">
+      <button {...attributes} {...listeners} className="cursor-grab p-1" disabled={!isUniversalAdmin}>
+        <GripVertical className="w-5 h-5 text-muted-foreground" />
+      </button>
+      <span className="w-6 text-center">{position.icon}</span>
+      <span className="flex-grow">{position.name}</span>
+      <Button variant="ghost" size="icon" onClick={() => onEdit(position)} disabled={!isUniversalAdmin}>
+        <Pencil className="w-4 h-4" />
+      </Button>
+      <Button variant="ghost" size="icon" onClick={() => onRemove(position.id)} disabled={!isUniversalAdmin}>
+        <Trash2 className="w-4 h-4 hover:text-destructive" />
+      </Button>
+    </div>
+  );
+};
+
 
 const CategoryManager = () => {
   const { teams, positions, subTeams, updateCategories, loading } = useAppContext();
   const { isUniversalAdmin, isExecutiveAdmin, currentUserProfile } = useAuth();
 
   const [newTeam, setNewTeam] = useState("");
-  const [newPosition, setNewPosition] = useState("");
+  
+  const [isPositionDialogOpen, setIsPositionDialogOpen] = useState(false);
+  const [currentPosition, setCurrentPosition] = useState<Position | null>(null);
+  const [positionName, setPositionName] = useState("");
+  const [positionIcon, setPositionIcon] = useState("");
+
   const [newSubTeam, setNewSubTeam] = useState("");
   const [parentTeam, setParentTeam] = useState("");
   const { toast } = useToast();
@@ -38,52 +83,102 @@ const CategoryManager = () => {
   const canManagePositions = isUniversalAdmin;
   const canManageSubTeams = isUniversalAdmin || isExecutiveAdmin;
 
-  const handleAdd = async (type: 'team' | 'position' | 'subTeam') => {
-    let updatedCategories: CategoryData = { teams, positions, subTeams: subTeams || {} };
-
-    if (type === 'team' && canManageTeams) {
-      if (!newTeam.trim()) return;
-      updatedCategories.teams = [...new Set([...teams, newTeam.trim()])];
-      setNewTeam("");
-    } else if (type === 'position' && canManagePositions) {
-      if (!newPosition.trim()) return;
-      updatedCategories.positions = [...new Set([...positions, newPosition.trim()])];
-      setNewPosition("");
-    } else if (type === 'subTeam' && canManageSubTeams) {
-      if (!newSubTeam.trim() || !parentTeam) return;
-      if (isExecutiveAdmin && !currentUserProfile?.teams?.includes(parentTeam)) {
-        toast({ variant: "destructive", title: "Unauthorized", description: "You can only add sub-teams to your own teams." });
-        return;
-      }
-      const parentSubTeams = updatedCategories.subTeams[parentTeam] || [];
-      updatedCategories.subTeams[parentTeam] = [...new Set([...parentSubTeams, newSubTeam.trim()])];
-      setNewSubTeam("");
-      setParentTeam("");
-    }
-
+  const handleAddTeam = async () => {
+    if (!newTeam.trim() || !canManageTeams) return;
+    const updatedCategories: CategoryData = { teams: [...new Set([...teams, newTeam.trim()])], positions, subTeams };
     await updateCategories(updatedCategories);
-    toast({ title: "Success", description: `${type} added.` });
+    setNewTeam("");
+    toast({ title: "Success", description: "Team added." });
   };
 
-  const handleRemove = async (type: 'team' | 'position' | 'subTeam', value: string, parent?: string) => {
-    let updatedCategories: CategoryData = { teams, positions, subTeams };
-    if (type === 'team' && canManageTeams) {
-      updatedCategories.teams = teams.filter(t => t !== value);
-      if (updatedCategories.subTeams[value]) {
+  const handleRemoveTeam = async (value: string) => {
+    if (!canManageTeams) return;
+    let updatedCategories: CategoryData = { 
+        teams: teams.filter(t => t !== value), 
+        positions, 
+        subTeams: { ...subTeams }
+    };
+    if (updatedCategories.subTeams[value]) {
         delete updatedCategories.subTeams[value];
-      }
-    } else if (type === 'position' && canManagePositions) {
-      updatedCategories.positions = positions.filter(p => p !== value);
-    } else if (type === 'subTeam' && parent && canManageSubTeams) {
-       if (isExecutiveAdmin && !currentUserProfile?.teams?.includes(parent)) {
+    }
+    await updateCategories(updatedCategories);
+    toast({ title: "Success", description: "Team removed." });
+  };
+  
+  const handleOpenPositionDialog = (position: Position | null) => {
+    setCurrentPosition(position);
+    setPositionName(position?.name || "");
+    setPositionIcon(position?.icon || "");
+    setIsPositionDialogOpen(true);
+  };
+  
+  const handleSavePosition = async () => {
+    if (!positionName.trim() || !canManagePositions) return;
+
+    let updatedPositions: Position[];
+    if (currentPosition) { // Editing existing
+        updatedPositions = positions.map(p => p.id === currentPosition.id ? { ...p, name: positionName, icon: positionIcon } : p);
+    } else { // Adding new
+        const newPosition: Position = { id: Date.now().toString(), name: positionName.trim(), icon: positionIcon };
+        updatedPositions = [...positions, newPosition];
+    }
+
+    await updateCategories({ teams, positions: updatedPositions, subTeams });
+    toast({ title: "Success", description: `Position ${currentPosition ? 'updated' : 'added'}.` });
+    setIsPositionDialogOpen(false);
+  };
+  
+  const handleRemovePosition = async (id: string) => {
+    if (!canManagePositions) return;
+    const updatedPositions = positions.filter(p => p.id !== id);
+    await updateCategories({ teams, positions: updatedPositions, subTeams });
+    toast({ title: "Success", description: "Position removed." });
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (active.id !== over?.id) {
+      const oldIndex = positions.findIndex((p) => p.id === active.id);
+      const newIndex = positions.findIndex((p) => p.id === over!.id);
+      const reorderedPositions = arrayMove(positions, oldIndex, newIndex);
+      await updateCategories({ teams, positions: reorderedPositions, subTeams });
+    }
+  };
+
+
+  const handleAddSubTeam = async () => {
+    if (!newSubTeam.trim() || !parentTeam || !canManageSubTeams) return;
+    if (isExecutiveAdmin && !currentUserProfile?.teams?.includes(parentTeam)) {
+        toast({ variant: "destructive", title: "Unauthorized", description: "You can only add sub-teams to your own teams." });
+        return;
+    }
+    const updatedSubTeams = { ...subTeams };
+    const parentSubTeams = updatedSubTeams[parentTeam] || [];
+    updatedSubTeams[parentTeam] = [...new Set([...parentSubTeams, newSubTeam.trim()])];
+    
+    await updateCategories({ teams, positions, subTeams: updatedSubTeams });
+    setNewSubTeam("");
+    setParentTeam("");
+    toast({ title: "Success", description: "Sub-team added." });
+  };
+
+  const handleRemoveSubTeam = async (value: string, parent: string) => {
+     if (!canManageSubTeams) return;
+     if (isExecutiveAdmin && !currentUserProfile?.teams?.includes(parent)) {
         toast({ variant: "destructive", title: "Unauthorized", description: "You can only remove sub-teams from your own teams." });
         return;
       }
-        const parentSubTeams = subTeams[parent] || [];
-        updatedCategories.subTeams[parent] = parentSubTeams.filter(st => st !== value);
-    }
-    await updateCategories(updatedCategories);
-    toast({ title: "Success", description: `${type} removed.` });
+    const updatedSubTeams = { ...subTeams };
+    const parentSubTeams = updatedSubTeams[parent] || [];
+    updatedSubTeams[parent] = parentSubTeams.filter(st => st !== value);
+
+    await updateCategories({ teams, positions, subTeams: updatedSubTeams });
+    toast({ title: "Success", description: "Sub-team removed." });
   };
 
   if (loading) return <p>Loading categories...</p>;
@@ -94,21 +189,21 @@ const CategoryManager = () => {
         <CardTitle className="flex items-center gap-2">
           <Tag className="w-6 h-6" /> Manage Categories
         </CardTitle>
-        <CardDescription>Add or remove teams, positions, and sub-teams.</CardDescription>
+        <CardDescription>Add, remove, or reorder teams, positions, and sub-teams.</CardDescription>
       </CardHeader>
       <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="space-y-3">
           <h3 className="font-semibold flex items-center gap-2"><Building2 className="w-5 h-5" /> Teams</h3>
           <div className="flex gap-2">
             <Input value={newTeam} onChange={(e) => setNewTeam(e.target.value)} placeholder="New Team" disabled={!canManageTeams} />
-            <Button onClick={() => handleAdd('team')} size="icon" disabled={!canManageTeams}><PlusCircle className="w-4 h-4" /></Button>
+            <Button onClick={handleAddTeam} size="icon" disabled={!canManageTeams}><PlusCircle className="w-4 h-4" /></Button>
           </div>
           <ScrollArea className="h-40 rounded-md border p-2">
             <div className="flex flex-col gap-2">
               {teams.map(team => (
                 <Badge key={team} variant="secondary" className="flex justify-between items-center p-2">
                   <span>{team}</span>
-                  <button onClick={() => handleRemove('team', team)} disabled={!canManageTeams}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
+                  <button onClick={() => handleRemoveTeam(team)} disabled={!canManageTeams}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
                 </Badge>
               ))}
             </div>
@@ -118,18 +213,20 @@ const CategoryManager = () => {
         <div className="space-y-3">
             <h3 className="font-semibold flex items-center gap-2"><Briefcase className="w-5 h-5" /> Positions</h3>
             <div className="flex gap-2">
-                <Input value={newPosition} onChange={(e) => setNewPosition(e.target.value)} placeholder="New Position" disabled={!canManagePositions} />
-                <Button onClick={() => handleAdd('position')} size="icon" disabled={!canManagePositions}><PlusCircle className="w-4 h-4" /></Button>
+                <Button onClick={() => handleOpenPositionDialog(null)} className="w-full" disabled={!canManagePositions}>
+                    <PlusCircle className="w-4 h-4 mr-2" /> Add New Position
+                </Button>
             </div>
             <ScrollArea className="h-40 rounded-md border p-2">
-                <div className="flex flex-col gap-2">
-                {positions.map(pos => (
-                    <Badge key={pos} variant="secondary" className="flex justify-between items-center p-2">
-                    <span>{pos}</span>
-                    <button onClick={() => handleRemove('position', pos)} disabled={!canManagePositions}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
-                    </Badge>
-                ))}
-                </div>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={positions} strategy={verticalListSortingStrategy}>
+                        <div className="flex flex-col gap-2">
+                            {positions.map(pos => (
+                                <SortablePositionItem key={pos.id} position={pos} onRemove={handleRemovePosition} onEdit={handleOpenPositionDialog} />
+                            ))}
+                        </div>
+                    </SortableContext>
+                </DndContext>
             </ScrollArea>
         </div>
 
@@ -143,7 +240,7 @@ const CategoryManager = () => {
                     </SelectContent>
                 </Select>
                 <Input value={newSubTeam} onChange={(e) => setNewSubTeam(e.target.value)} placeholder="New Sub-team" disabled={!parentTeam} />
-                <Button onClick={() => handleAdd('subTeam')} size="icon" disabled={!parentTeam || !newSubTeam}><PlusCircle className="w-4 h-4" /></Button>
+                <Button onClick={handleAddSubTeam} size="icon" disabled={!parentTeam || !newSubTeam}><PlusCircle className="w-4 h-4" /></Button>
             </div>
             <ScrollArea className="h-40 rounded-md border p-2">
                 <div className="flex flex-col gap-2">
@@ -154,7 +251,7 @@ const CategoryManager = () => {
                                 {subs.map(sub => (
                                     <Badge key={sub} variant="outline" className="flex justify-between items-center p-2 ml-2 mb-1">
                                         <span>{sub}</span>
-                                        <button onClick={() => handleRemove('subTeam', sub, parent)} disabled={!canManageSubTeams}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
+                                        <button onClick={() => handleRemoveSubTeam(sub, parent)} disabled={!canManageSubTeams}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
                                     </Badge>
                                 ))}
                             </div>
@@ -164,6 +261,27 @@ const CategoryManager = () => {
             </ScrollArea>
         </div>
       </CardContent>
+       <Dialog open={isPositionDialogOpen} onOpenChange={setIsPositionDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{currentPosition ? "Edit" : "Add"} Position</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="position-name">Position Name</Label>
+                <Input id="position-name" value={positionName} onChange={(e) => setPositionName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="position-icon">Icon / Emoji</Label>
+                <Input id="position-icon" value={positionIcon} onChange={(e) => setPositionIcon(e.target.value)} placeholder="e.g., 👑" />
+              </div>
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+              <Button onClick={handleSavePosition}>Save</Button>
+            </DialogFooter>
+          </DialogContent>
+      </Dialog>
     </Card>
   );
 };
@@ -272,7 +390,7 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                     <UserCog className="h-4 w-4" />
                 </Button>
             </DialogTrigger>
-            <DialogContent>
+            <PopoverContent className="w-[var(--radix-popover-trigger-width)] z-51" sideOffset={5}>
                 <DialogHeader>
                     <DialogTitle>Set Role for {user.name}</DialogTitle>
                     <DialogDescription>Assign an administrative role and team access for this user.</DialogDescription>
@@ -333,14 +451,14 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                     <Button onClick={handleSave}>Save Changes</Button>
                 </DialogFooter>
-            </DialogContent>
+            </PopoverContent>
         </Dialog>
     );
 };
 
 
 export default function AdminPage() {
-  const { users, deleteUser, setScheduleData, clearAllUsers, loading } = useAppContext();
+  const { users, positions, deleteUser, setScheduleData, clearAllUsers, loading } = useAppContext();
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -524,6 +642,9 @@ export default function AdminPage() {
     }
     return user.team || 'N/A';
   }
+  
+  const positionMap = useMemo(() => new Map(positions.map(p => [p.name, p.icon])), [positions]);
+
 
   const pageLoading = loading || authLoading;
 
@@ -636,7 +757,9 @@ export default function AdminPage() {
                             <p className="text-sm text-muted-foreground">{user.email}</p>
                             <p className="text-sm text-muted-foreground">Team(s): {getTeamDisplay(user)}</p>
                             {user.subTeam && <p className="text-sm text-muted-foreground">Sub-team: {user.subTeam}</p>}
-                            <p className="text-sm text-muted-foreground">Position: {user.position}</p>
+                            <p className="text-sm text-muted-foreground flex items-center gap-1">
+                              Position: {user.position} {positionMap.get(user.position) && <span>{positionMap.get(user.position)}</span>}
+                            </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-1">

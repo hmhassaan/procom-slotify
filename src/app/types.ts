@@ -24,8 +24,14 @@ export type FreeSlots = {
   [day: string]: string[];
 };
 
+export type Position = {
+  id: string;
+  name: string;
+  icon: string;
+};
+
 export type CategoryData = {
   teams: string[];
-  positions: string[];
+  positions: Position[];
   subTeams: Record<string, string[]>;
 };
