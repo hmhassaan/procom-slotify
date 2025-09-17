@@ -17,12 +17,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { User } from "@/app/types";
 import { useAuth } from "@/context/AuthContext";
 
-const teams = ["ExCom/Core", "CS Competitions", "AI Competitions", "Web Development", "Automation"];
-const positions = ["Executive", "Mentor", "Head", "Co-head", "Deputy Head", "Module Head", "Module Cohead", "Member"];
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 export default function AddSchedulePage() {
-  const { allCourses, timeSlots, addUser, loading } = useAppContext();
+  const { allCourses, timeSlots, addUser, loading, teams, positions, subTeams } = useAppContext();
   const router = useRouter();
   const { toast } = useToast();
   const { currentUser, loading: authLoading } = useAuth();
@@ -31,10 +29,16 @@ export default function AddSchedulePage() {
   const [newUserNUID, setNewUserNUID] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserTeam, setNewUserTeam] = useState("");
+  const [newUserSubTeam, setNewUserSubTeam] = useState("");
   const [newUserPosition, setNewUserPosition] = useState("");
   const [offDays, setOffDays] = useState<Record<string, boolean>>({});
   const [courseSearchTerm, setCourseSearchTerm] = useState("");
   const [selectedCourses, setSelectedCourses] = useState<Record<string, boolean>>({});
+  
+  const availableSubTeams = useMemo(() => {
+    return newUserTeam ? subTeams[newUserTeam] || [] : [];
+  }, [newUserTeam, subTeams]);
+
 
   useEffect(() => {
     if (!authLoading && !currentUser) {
@@ -44,6 +48,12 @@ export default function AddSchedulePage() {
       setNewUserEmail(currentUser.email || "");
     }
   }, [currentUser, authLoading, router]);
+
+  useEffect(() => {
+    // Reset subteam if team changes
+    setNewUserSubTeam("");
+  }, [newUserTeam]);
+
 
   const handleAddUser = async () => {
     if (!newUserName.trim()) {
@@ -84,6 +94,7 @@ export default function AddSchedulePage() {
       email: newUserEmail,
       courses: userCourses,
       team: newUserTeam,
+      subTeam: newUserSubTeam || undefined,
       position: newUserPosition,
       offDays: userOffDays,
     };
@@ -143,7 +154,7 @@ export default function AddSchedulePage() {
             <Label htmlFor="user-nuid" className="font-semibold">NU-ID</Label>
             <Input id="user-nuid" placeholder="e.g., 20K-1234" value={newUserNUID} onChange={(e) => setNewUserNUID(e.target.value)} className="mt-2" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="user-team" className="font-semibold">Team</Label>
               <Select value={newUserTeam} onValueChange={setNewUserTeam}>
@@ -157,7 +168,21 @@ export default function AddSchedulePage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
+             <div>
+              <Label htmlFor="user-subteam" className="font-semibold">Sub-team (Optional)</Label>
+              <Select value={newUserSubTeam} onValueChange={setNewUserSubTeam} disabled={availableSubTeams.length === 0}>
+                <SelectTrigger id="user-subteam" className="mt-2">
+                  <SelectValue placeholder="Select sub-team" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSubTeams.map((subTeam) => (
+                    <SelectItem key={subTeam} value={subTeam}>{subTeam}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+           <div>
               <Label htmlFor="user-position" className="font-semibold">Position</Label>
               <Select value={newUserPosition} onValueChange={setNewUserPosition}>
                 <SelectTrigger id="user-position" className="mt-2">
@@ -170,7 +195,6 @@ export default function AddSchedulePage() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
           <div>
             <Label className="font-semibold">Off Days</Label>
             <div className="flex flex-wrap gap-x-4 gap-y-2 mt-2">

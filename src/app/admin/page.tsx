@@ -1,50 +1,159 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import * as xlsx from "xlsx";
-import {
-  FileUp,
-  Loader2,
-  AlertCircle,
-  Users,
-  Trash2,
-} from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { FileUp, Loader2, AlertCircle, Users, Trash2, Tag, PlusCircle, Building2, Briefcase } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppContext } from "@/context/AppContext";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import type { SlotCoursesIndex } from "@/context/AppContext";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import type { SlotCoursesIndex, CategoryData } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-const norm = (s: unknown) =>
-  (s ?? "")
-    .toString()
-    .replace(/\s*\n\s*/g, " ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+const norm = (s: unknown) => (s ?? "").toString().replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+
+const CategoryManager = () => {
+  const { teams, positions, subTeams, updateCategories, loading } = useAppContext();
+  const [newTeam, setNewTeam] = useState("");
+  const [newPosition, setNewPosition] = useState("");
+  const [newSubTeam, setNewSubTeam] = useState("");
+  const [parentTeam, setParentTeam] = useState("");
+  const { toast } = useToast();
+
+  const handleAdd = async (type: 'team' | 'position' | 'subTeam') => {
+    let updatedCategories: CategoryData = { teams, positions, subTeams: subTeams || {} };
+
+    if (type === 'team') {
+      if (!newTeam.trim()) return;
+      updatedCategories.teams = [...new Set([...teams, newTeam.trim()])];
+      setNewTeam("");
+    } else if (type === 'position') {
+      if (!newPosition.trim()) return;
+      updatedCategories.positions = [...new Set([...positions, newPosition.trim()])];
+      setNewPosition("");
+    } else if (type === 'subTeam') {
+      if (!newSubTeam.trim() || !parentTeam) return;
+      const parentSubTeams = updatedCategories.subTeams[parentTeam] || [];
+      updatedCategories.subTeams[parentTeam] = [...new Set([...parentSubTeams, newSubTeam.trim()])];
+      setNewSubTeam("");
+      setParentTeam("");
+    }
+
+    await updateCategories(updatedCategories);
+    toast({ title: "Success", description: `${type} added.` });
+  };
+
+  const handleRemove = async (type: 'team' | 'position' | 'subTeam', value: string, parent?: string) => {
+    let updatedCategories: CategoryData = { teams, positions, subTeams };
+    if (type === 'team') {
+      updatedCategories.teams = teams.filter(t => t !== value);
+      // Also remove subteams associated with this team
+      if (updatedCategories.subTeams[value]) {
+        delete updatedCategories.subTeams[value];
+      }
+    } else if (type === 'position') {
+      updatedCategories.positions = positions.filter(p => p !== value);
+    } else if (type === 'subTeam' && parent) {
+        const parentSubTeams = subTeams[parent] || [];
+        updatedCategories.subTeams[parent] = parentSubTeams.filter(st => st !== value);
+    }
+    await updateCategories(updatedCategories);
+    toast({ title: "Success", description: `${type} removed.` });
+  };
+
+  if (loading) return <p>Loading categories...</p>;
+
+  return (
+    <Card className="lg:col-span-3">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Tag className="w-6 h-6" /> Manage Categories
+        </CardTitle>
+        <CardDescription>Add or remove teams, positions, and sub-teams.</CardDescription>
+      </CardHeader>
+      <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Teams */}
+        <div className="space-y-3">
+          <h3 className="font-semibold flex items-center gap-2"><Building2 className="w-5 h-5" /> Teams</h3>
+          <div className="flex gap-2">
+            <Input value={newTeam} onChange={(e) => setNewTeam(e.target.value)} placeholder="New Team" />
+            <Button onClick={() => handleAdd('team')} size="icon"><PlusCircle className="w-4 h-4" /></Button>
+          </div>
+          <ScrollArea className="h-40 rounded-md border p-2">
+            <div className="flex flex-col gap-2">
+              {teams.map(team => (
+                <Badge key={team} variant="secondary" className="flex justify-between items-center p-2">
+                  <span>{team}</span>
+                  <button onClick={() => handleRemove('team', team)}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
+                </Badge>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+
+        {/* Positions */}
+        <div className="space-y-3">
+            <h3 className="font-semibold flex items-center gap-2"><Briefcase className="w-5 h-5" /> Positions</h3>
+            <div className="flex gap-2">
+                <Input value={newPosition} onChange={(e) => setNewPosition(e.target.value)} placeholder="New Position" />
+                <Button onClick={() => handleAdd('position')} size="icon"><PlusCircle className="w-4 h-4" /></Button>
+            </div>
+            <ScrollArea className="h-40 rounded-md border p-2">
+                <div className="flex flex-col gap-2">
+                {positions.map(pos => (
+                    <Badge key={pos} variant="secondary" className="flex justify-between items-center p-2">
+                    <span>{pos}</span>
+                    <button onClick={() => handleRemove('position', pos)}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
+                    </Badge>
+                ))}
+                </div>
+            </ScrollArea>
+        </div>
+
+        {/* Sub-teams */}
+        <div className="space-y-3">
+            <h3 className="font-semibold flex items-center gap-2"><Tag className="w-5 h-5" /> Sub-teams</h3>
+            <div className="flex gap-2">
+                <Select value={parentTeam} onValueChange={setParentTeam}>
+                    <SelectTrigger><SelectValue placeholder="Select Team" /></SelectTrigger>
+                    <SelectContent>
+                        {teams.map(team => <SelectItem key={team} value={team}>{team}</SelectItem>)}
+                    </SelectContent>
+                </Select>
+                <Input value={newSubTeam} onChange={(e) => setNewSubTeam(e.target.value)} placeholder="New Sub-team" disabled={!parentTeam} />
+                <Button onClick={() => handleAdd('subTeam')} size="icon" disabled={!parentTeam || !newSubTeam}><PlusCircle className="w-4 h-4" /></Button>
+            </div>
+            <ScrollArea className="h-40 rounded-md border p-2">
+                <div className="flex flex-col gap-2">
+                    {Object.entries(subTeams).map(([parent, subs]) => (
+                        <div key={parent}>
+                            <h4 className="font-bold text-sm mb-1">{parent}</h4>
+                            {subs.map(sub => (
+                                <Badge key={sub} variant="outline" className="flex justify-between items-center p-2 ml-2 mb-1">
+                                    <span>{sub}</span>
+                                    <button onClick={() => handleRemove('subTeam', sub, parent)}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
+                                </Badge>
+                            ))}
+                        </div>
+                    ))}
+                </div>
+            </ScrollArea>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 
 export default function AdminPage() {
   const { users, deleteUser, setScheduleData, clearAllUsers, loading } = useAppContext();
@@ -190,12 +299,15 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="container mx-auto p-4 md:p-8">
-       <header className="text-center mb-12">
+    <div className="container mx-auto p-4 md:p-8 space-y-8">
+       <header className="text-center">
         <h1 className="text-4xl md:text-5xl font-bold font-headline text-primary tracking-tight">
           Admin Panel
         </h1>
       </header>
+
+      <CategoryManager />
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         <Card className="lg:col-span-1">
           <CardHeader>
@@ -275,7 +387,7 @@ export default function AdminPage() {
                       <div>
                         <p className="font-semibold">{user.name} ({user.nuId})</p>
                         <p className="text-sm text-muted-foreground">{user.email}</p>
-                        <p className="text-sm text-muted-foreground">{user.team} - {user.position}</p>
+                        <p className="text-sm text-muted-foreground">{user.team} {user.subTeam ? `> ${user.subTeam}` : ''} - {user.position}</p>
                         <p className="text-sm text-muted-foreground">{user.courses.length} courses</p>
                         {user.offDays.length > 0 && (
                           <p className="text-xs text-muted-foreground mt-1">Off: {user.offDays.join(", ")}</p>

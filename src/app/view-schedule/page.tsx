@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -11,15 +12,15 @@ import { useRouter } from "next/navigation";
 import { MultiSelect } from "@/components/ui/multi-select";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-const teams = ["ExCom/Core", "CS Competitions", "AI Competitions", "Web Development", "Automation"];
-const positions = ["Executive", "Mentor", "Head", "Co-head", "Deputy Head", "Module Head", "Module Cohead", "Member"];
 
 const isLab = (name: string) => /\blab\b/i.test(name);
 
 export default function ViewSchedulePage() {
-  const { users, timeSlots, slotCourses, loading } = useAppContext();
+  const { users, timeSlots, slotCourses, loading, teams, positions, subTeams } = useAppContext();
   const [teamFilters, setTeamFilters] = useState<string[]>([]);
   const [positionFilters, setPositionFilters] = useState<string[]>([]);
+  const [subTeamFilters, setSubTeamFilters] = useState<string[]>([]);
+
   const { currentUser, loading: authLoading } = useAuth();
   const router = useRouter();
 
@@ -29,12 +30,21 @@ export default function ViewSchedulePage() {
     }
   }, [currentUser, authLoading, router]);
 
+  const availableSubTeams = useMemo(() => {
+    if (teamFilters.length === 0) {
+      return Object.values(subTeams).flat();
+    }
+    return teamFilters.flatMap(team => subTeams[team] || []);
+  }, [teamFilters, subTeams]);
+
+
   const filteredUsers = useMemo(() => {
     return users.filter(user =>
       (teamFilters.length === 0 || teamFilters.includes(user.team)) &&
-      (positionFilters.length === 0 || positionFilters.includes(user.position))
+      (positionFilters.length === 0 || positionFilters.includes(user.position)) &&
+      (subTeamFilters.length === 0 || (user.subTeam && subTeamFilters.includes(user.subTeam)))
     );
-  }, [users, teamFilters, positionFilters]);
+  }, [users, teamFilters, positionFilters, subTeamFilters]);
 
   const availability = useMemo(() => {
     const availabilityData: Record<string, Record<string, { available: User[], unavailable: User[] }>> = {};
@@ -118,20 +128,24 @@ export default function ViewSchedulePage() {
       <Card>
         <CardHeader>
           <CardTitle>Team Schedule</CardTitle>
-          <div className="flex flex-col sm:flex-row gap-4 mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
             <MultiSelect
               options={teams}
               selected={teamFilters}
               onChange={setTeamFilters}
               placeholder="Filter by team"
-              className="w-full sm:w-[250px]"
+            />
+             <MultiSelect
+              options={availableSubTeams}
+              selected={subTeamFilters}
+              onChange={setSubTeamFilters}
+              placeholder="Filter by sub-team"
             />
             <MultiSelect
               options={positions}
               selected={positionFilters}
               onChange={setPositionFilters}
               placeholder="Filter by position"
-              className="w-full sm:w-[250px]"
             />
           </div>
         </CardHeader>
@@ -146,8 +160,8 @@ export default function ViewSchedulePage() {
                 {weekdays.map(day => <TabsTrigger key={day} value={day}>{day}</TabsTrigger>)}
               </TabsList>
               {weekdays.map(day => (
-                <TabsContent key={day} value={day}>
-                  <ScrollArea className="h-[60vh]">
+                <TabsContent key={day} value={day} className="relative z-10">
+                  <ScrollArea className="h-[60vh] ">
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-1">
                       {timeSlots.map(time => (
                         <div key={time} className="p-4 border rounded-lg">
