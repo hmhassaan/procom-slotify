@@ -210,7 +210,7 @@ export default function ViewSchedulePage() {
                     </TabsList>
                 </div>
                 {weekdays.map(day => (
-                  <TabsContent key={day} value={day} className="relative">
+                  <TabsContent key={day} value={day} className="relative z-10">
                     <ScrollArea className="h-[60vh] -mx-6 px-6">
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 py-4">
                         {timeSlots.map(time => (
@@ -272,5 +272,3 @@ export default function ViewSchedulePage() {
     </TooltipProvider>
   );
 }
-
-    
