@@ -97,13 +97,30 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         }
     });
     
-    const categoriesUnsubscribe = onSnapshot(doc(db, 'schedule', 'categories'), (doc) => {
-        if (doc.exists()) {
-            const data = doc.data() as CategoryData;
+    const categoriesUnsubscribe = onSnapshot(doc(db, 'schedule', 'categories'), (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data() as any;
+            
+            let positions: Position[] = data.positions || [];
+            // One-time data migration for positions from string[] to Position[]
+            if (positions.length > 0 && typeof positions[0] === 'string') {
+                const migratedPositions: Position[] = (positions as unknown as string[]).map(name => ({
+                    id: name.toLowerCase().replace(/\s+/g, '-') + '-migrated',
+                    name: name,
+                    icon: ''
+                }));
+                
+                // Update Firestore in the background
+                const categoryDoc = doc(db, 'schedule', 'categories');
+                updateDoc(categoryDoc, { positions: migratedPositions });
+
+                positions = migratedPositions;
+            }
+
             setState(prevState => ({
                 ...prevState,
                 teams: data.teams || [],
-                positions: data.positions || [],
+                positions: positions,
                 subTeams: data.subTeams || {},
             }));
         } else {
