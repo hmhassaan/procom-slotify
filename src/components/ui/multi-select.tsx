@@ -74,15 +74,10 @@ export function MultiSelect({
                     variant="secondary"
                     key={item}
                     className="mr-1 mb-1"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleUnselect(item);
-                    }}
                   >
                     {item}
-                    <button
-                      className="ml-1 hover:bg-secondary-foreground/20 rounded-full"
+                    <span
+                      className="ml-1 hover:bg-secondary-foreground/20 rounded-full cursor-pointer"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -90,7 +85,7 @@ export function MultiSelect({
                       }}
                     >
                       <X className="h-3 w-3" />
-                    </button>
+                    </span>
                   </Badge>
                 ))
               ) : (
