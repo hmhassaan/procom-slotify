@@ -92,6 +92,18 @@ export default function ViewSchedulePage() {
   
   const availability = useMemo(() => {
     const availabilityData: Record<string, Record<string, { available: User[], unavailable: User[] }>> = {};
+    const positionOrder = new Map(positions.map((p, i) => [p.name, i]));
+
+    const sortUsers = (userList: User[]) => {
+      return userList.sort((a, b) => {
+        const orderA = positionOrder.get(a.position) ?? 999;
+        const orderB = positionOrder.get(b.position) ?? 999;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        return a.name.localeCompare(b.name);
+      });
+    };
 
     weekdays.forEach(day => {
       availabilityData[day] = {};
@@ -138,18 +150,24 @@ export default function ViewSchedulePage() {
 
     weekdays.forEach(day => {
       timeSlots.forEach(time => {
+        const slotAvailability = { available: [] as User[], unavailable: [] as User[] };
         filteredUsers.forEach(user => {
           if (userBusySlots[user.id]?.[day]?.has(time)) {
-            availabilityData[day][time].unavailable.push(user);
+            slotAvailability.unavailable.push(user);
           } else {
-            availabilityData[day][time].available.push(user);
+            slotAvailability.available.push(user);
           }
         });
+        
+        availabilityData[day][time] = {
+            available: sortUsers(slotAvailability.available),
+            unavailable: sortUsers(slotAvailability.unavailable),
+        };
       });
     });
 
     return availabilityData;
-  }, [filteredUsers, timeSlots, slotCourses]);
+  }, [filteredUsers, timeSlots, slotCourses, positions]);
   
   const positionMap = useMemo(() => new Map(positions.map(p => [p.name, p.icon])), [positions]);
 
