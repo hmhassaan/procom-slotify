@@ -94,7 +94,7 @@ export default function AddSchedulePage() {
       email: newUserEmail,
       courses: userCourses,
       team: newUserTeam,
-      subTeam: newUserSubTeam || undefined,
+      subTeam: newUserSubTeam || "",
       position: newUserPosition,
       offDays: userOffDays,
     };
