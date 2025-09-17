@@ -9,7 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 
 export default function Navbar() {
-  const { currentUser, isAdmin, isTeamAdmin, isSubTeamAdmin, signOut: firebaseSignOut } = useAuth();
+  const { currentUser, hasAdminPrivileges, signOut: firebaseSignOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -27,8 +27,6 @@ export default function Navbar() {
     { href: "/add-schedule", label: "Add Schedule", icon: CalendarPlus },
     { href: "/view-schedule", label: "View Schedule", icon: CalendarCheck },
   ];
-
-  const hasAdminPrivileges = isAdmin || isTeamAdmin || isSubTeamAdmin;
 
   if (hasAdminPrivileges) {
     navItems.push({ href: "/admin", label: "Admin", icon: Shield });

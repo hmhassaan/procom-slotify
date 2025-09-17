@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -9,7 +10,7 @@ import { useEffect } from "react";
 import { useAppContext } from "@/context/AppContext";
 
 export default function Home() {
-  const { currentUser, currentUserProfile, loading: authLoading, isAdmin, isTeamAdmin, isSubTeamAdmin } = useAuth();
+  const { currentUser, currentUserProfile, loading: authLoading, hasAdminPrivileges } = useAuth();
   const { loading: appLoading } = useAppContext();
   const router = useRouter();
 
@@ -34,8 +35,6 @@ export default function Home() {
   }
 
   const name = currentUserProfile?.name || currentUser?.displayName || currentUser?.email || "there";
-  const hasAdminPrivileges = isAdmin || isTeamAdmin || isSubTeamAdmin;
-
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background -mt-16">

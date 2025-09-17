@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import * as xlsx from "xlsx";
-import { FileUp, Loader2, AlertCircle, Users, Trash2, Tag, PlusCircle, Building2, Briefcase, UserCog, Shield, ShieldCheck, ShieldAlert } from "lucide-react";
+import { FileUp, Loader2, AlertCircle, Users, Trash2, Tag, PlusCircle, Building2, Briefcase, UserCog, Shield, ShieldCheck, ShieldAlert, Crown } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,38 +12,49 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppContext } from "@/context/AppContext";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import type { SlotCoursesIndex, CategoryData, User } from "@/context/AppContext";
+import type { SlotCoursesIndex, CategoryData, User, UserRole } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { MultiSelect } from "@/components/ui/multi-select";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const norm = (s: unknown) => (s ?? "").toString().replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
 
 const CategoryManager = () => {
   const { teams, positions, subTeams, updateCategories, loading } = useAppContext();
+  const { isUniversalAdmin, isExecutiveAdmin, currentUserProfile } = useAuth();
+
   const [newTeam, setNewTeam] = useState("");
   const [newPosition, setNewPosition] = useState("");
   const [newSubTeam, setNewSubTeam] = useState("");
   const [parentTeam, setParentTeam] = useState("");
   const { toast } = useToast();
+  
+  const canManageTeams = isUniversalAdmin;
+  const canManagePositions = isUniversalAdmin;
+  const canManageSubTeams = isUniversalAdmin || isExecutiveAdmin;
 
   const handleAdd = async (type: 'team' | 'position' | 'subTeam') => {
     let updatedCategories: CategoryData = { teams, positions, subTeams: subTeams || {} };
 
-    if (type === 'team') {
+    if (type === 'team' && canManageTeams) {
       if (!newTeam.trim()) return;
       updatedCategories.teams = [...new Set([...teams, newTeam.trim()])];
       setNewTeam("");
-    } else if (type === 'position') {
+    } else if (type === 'position' && canManagePositions) {
       if (!newPosition.trim()) return;
       updatedCategories.positions = [...new Set([...positions, newPosition.trim()])];
       setNewPosition("");
-    } else if (type === 'subTeam') {
+    } else if (type === 'subTeam' && canManageSubTeams) {
       if (!newSubTeam.trim() || !parentTeam) return;
+      if (isExecutiveAdmin && !currentUserProfile?.teams?.includes(parentTeam)) {
+        toast({ variant: "destructive", title: "Unauthorized", description: "You can only add sub-teams to your own teams." });
+        return;
+      }
       const parentSubTeams = updatedCategories.subTeams[parentTeam] || [];
       updatedCategories.subTeams[parentTeam] = [...new Set([...parentSubTeams, newSubTeam.trim()])];
       setNewSubTeam("");
@@ -56,14 +67,18 @@ const CategoryManager = () => {
 
   const handleRemove = async (type: 'team' | 'position' | 'subTeam', value: string, parent?: string) => {
     let updatedCategories: CategoryData = { teams, positions, subTeams };
-    if (type === 'team') {
+    if (type === 'team' && canManageTeams) {
       updatedCategories.teams = teams.filter(t => t !== value);
       if (updatedCategories.subTeams[value]) {
         delete updatedCategories.subTeams[value];
       }
-    } else if (type === 'position') {
+    } else if (type === 'position' && canManagePositions) {
       updatedCategories.positions = positions.filter(p => p !== value);
-    } else if (type === 'subTeam' && parent) {
+    } else if (type === 'subTeam' && parent && canManageSubTeams) {
+       if (isExecutiveAdmin && !currentUserProfile?.teams?.includes(parent)) {
+        toast({ variant: "destructive", title: "Unauthorized", description: "You can only remove sub-teams from your own teams." });
+        return;
+      }
         const parentSubTeams = subTeams[parent] || [];
         updatedCategories.subTeams[parent] = parentSubTeams.filter(st => st !== value);
     }
@@ -85,15 +100,15 @@ const CategoryManager = () => {
         <div className="space-y-3">
           <h3 className="font-semibold flex items-center gap-2"><Building2 className="w-5 h-5" /> Teams</h3>
           <div className="flex gap-2">
-            <Input value={newTeam} onChange={(e) => setNewTeam(e.target.value)} placeholder="New Team" />
-            <Button onClick={() => handleAdd('team')} size="icon"><PlusCircle className="w-4 h-4" /></Button>
+            <Input value={newTeam} onChange={(e) => setNewTeam(e.target.value)} placeholder="New Team" disabled={!canManageTeams} />
+            <Button onClick={() => handleAdd('team')} size="icon" disabled={!canManageTeams}><PlusCircle className="w-4 h-4" /></Button>
           </div>
           <ScrollArea className="h-40 rounded-md border p-2">
             <div className="flex flex-col gap-2">
               {teams.map(team => (
                 <Badge key={team} variant="secondary" className="flex justify-between items-center p-2">
                   <span>{team}</span>
-                  <button onClick={() => handleRemove('team', team)}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
+                  <button onClick={() => handleRemove('team', team)} disabled={!canManageTeams}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
                 </Badge>
               ))}
             </div>
@@ -103,15 +118,15 @@ const CategoryManager = () => {
         <div className="space-y-3">
             <h3 className="font-semibold flex items-center gap-2"><Briefcase className="w-5 h-5" /> Positions</h3>
             <div className="flex gap-2">
-                <Input value={newPosition} onChange={(e) => setNewPosition(e.target.value)} placeholder="New Position" />
-                <Button onClick={() => handleAdd('position')} size="icon"><PlusCircle className="w-4 h-4" /></Button>
+                <Input value={newPosition} onChange={(e) => setNewPosition(e.target.value)} placeholder="New Position" disabled={!canManagePositions} />
+                <Button onClick={() => handleAdd('position')} size="icon" disabled={!canManagePositions}><PlusCircle className="w-4 h-4" /></Button>
             </div>
             <ScrollArea className="h-40 rounded-md border p-2">
                 <div className="flex flex-col gap-2">
                 {positions.map(pos => (
                     <Badge key={pos} variant="secondary" className="flex justify-between items-center p-2">
                     <span>{pos}</span>
-                    <button onClick={() => handleRemove('position', pos)}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
+                    <button onClick={() => handleRemove('position', pos)} disabled={!canManagePositions}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
                     </Badge>
                 ))}
                 </div>
@@ -121,10 +136,10 @@ const CategoryManager = () => {
         <div className="space-y-3">
             <h3 className="font-semibold flex items-center gap-2"><Tag className="w-5 h-5" /> Sub-teams</h3>
             <div className="flex gap-2">
-                <Select value={parentTeam} onValueChange={setParentTeam}>
+                <Select value={parentTeam} onValueChange={setParentTeam} disabled={!canManageSubTeams}>
                     <SelectTrigger><SelectValue placeholder="Select Team" /></SelectTrigger>
                     <SelectContent>
-                        {teams.map(team => <SelectItem key={team} value={team}>{team}</SelectItem>)}
+                        {(isExecutiveAdmin ? (currentUserProfile?.teams || []) : teams).map(team => <SelectItem key={team} value={team}>{team}</SelectItem>)}
                     </SelectContent>
                 </Select>
                 <Input value={newSubTeam} onChange={(e) => setNewSubTeam(e.target.value)} placeholder="New Sub-team" disabled={!parentTeam} />
@@ -133,15 +148,17 @@ const CategoryManager = () => {
             <ScrollArea className="h-40 rounded-md border p-2">
                 <div className="flex flex-col gap-2">
                     {Object.entries(subTeams).map(([parent, subs]) => (
-                        <div key={parent}>
-                            <h4 className="font-bold text-sm mb-1">{parent}</h4>
-                            {subs.map(sub => (
-                                <Badge key={sub} variant="outline" className="flex justify-between items-center p-2 ml-2 mb-1">
-                                    <span>{sub}</span>
-                                    <button onClick={() => handleRemove('subTeam', sub, parent)}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
-                                </Badge>
-                            ))}
-                        </div>
+                         ((isExecutiveAdmin && !currentUserProfile?.teams?.includes(parent)) ? null : (
+                            <div key={parent}>
+                                <h4 className="font-bold text-sm mb-1">{parent}</h4>
+                                {subs.map(sub => (
+                                    <Badge key={sub} variant="outline" className="flex justify-between items-center p-2 ml-2 mb-1">
+                                        <span>{sub}</span>
+                                        <button onClick={() => handleRemove('subTeam', sub, parent)} disabled={!canManageSubTeams}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
+                                    </Badge>
+                                ))}
+                            </div>
+                         ))
                     ))}
                 </div>
             </ScrollArea>
@@ -152,24 +169,192 @@ const CategoryManager = () => {
 };
 
 
+const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) => {
+    const { updateUser, teams } = useAppContext();
+    const { currentUserProfile, isUniversalAdmin, isExecutiveAdmin } = useAuth();
+    const [isOpen, setIsOpen] = useState(false);
+    const [selectedRole, setSelectedRole] = useState<UserRole>(user.role || 'none');
+    const [selectedTeams, setSelectedTeams] = useState<string[]>(user.teams || (user.team ? [user.team] : []));
+    const [selectedTeam, setSelectedTeam] = useState<string>(user.team || '');
+    const [selectedSubTeam, setSelectedSubTeam] = useState<string>(user.subTeam || '');
+
+    useEffect(() => {
+        setSelectedRole(user.role || 'none');
+        setSelectedTeams(user.teams || (user.team ? [user.team] : []));
+        setSelectedTeam(user.team || '');
+        setSelectedSubTeam(user.subTeam || '');
+    }, [user, isOpen]);
+
+    const handleSave = async () => {
+        const updatedUserData: Partial<User> = { role: selectedRole };
+        if (selectedRole === 'executive') {
+            updatedUserData.teams = selectedTeams;
+            updatedUserData.team = undefined;
+        } else if (selectedRole === 'team' || selectedRole === 'subTeam') {
+            updatedUserData.team = selectedTeam;
+            updatedUserData.teams = undefined;
+            if (selectedRole === 'subTeam') {
+                updatedUserData.subTeam = selectedSubTeam;
+            } else {
+                 updatedUserData.subTeam = '';
+            }
+        } else {
+            updatedUserData.team = selectedTeam || user.team;
+            updatedUserData.teams = undefined;
+            updatedUserData.subTeam = selectedSubTeam || user.subTeam;
+        }
+
+        try {
+            await updateUser(user.id, updatedUserData);
+            toast({ title: "Success", description: "User role updated." });
+            onUpdate();
+            setIsOpen(false);
+        } catch (e) {
+            toast({ variant: "destructive", title: "Error", description: "Could not update user role." });
+        }
+    };
+    
+    const canSetRole = (targetUser: User, role: UserRole) => {
+        if (!currentUserProfile) return false;
+        if (isUniversalAdmin) return true;
+        if (isExecutiveAdmin) {
+            // Executive can't edit universal or other executives
+            if (targetUser.role === 'universal' || targetUser.role === 'executive') return false;
+            // Executive can only assign team or subteam within their teams
+            return role === 'team' || role === 'subTeam';
+        }
+        if (isTeamAdmin) {
+             // Team admin can't edit any admin
+            if (targetUser.role !== 'none') return false;
+             // Team admin can only assign subteam admin
+            return role === 'subTeam';
+        }
+        return false;
+    };
+
+    const getRoleOptions = () => {
+        if (isUniversalAdmin) {
+            return [
+                { value: 'none', label: 'None' },
+                { value: 'universal', label: 'Universal Admin' },
+                { value: 'executive', label: 'Executive Admin' },
+                { value: 'team', label: 'Team Admin' },
+                { value: 'subTeam', label: 'Sub-team Admin' },
+            ];
+        }
+        if (isExecutiveAdmin) {
+            return [
+                 { value: 'none', label: 'None' },
+                 { value: 'team', label: 'Team Admin' },
+                 { value: 'subTeam', label: 'Sub-team Admin' },
+            ];
+        }
+        if (isTeamAdmin) {
+            return [
+                { value: 'none', label: 'None' },
+                { value: 'subTeam', label: 'Sub-team Admin' },
+            ];
+        }
+        return [{ value: 'none', label: 'None' }];
+    }
+
+    const isRoleDisabled = (role: UserRole) => !canSetRole(user, role);
+
+    const isTargetAdmin = user.role === 'universal' || user.role === 'executive';
+    const canEditTarget = isUniversalAdmin || (isExecutiveAdmin && !isTargetAdmin);
+
+
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+                <Button variant="ghost" size="icon" disabled={!canEditTarget}>
+                    <UserCog className="h-4 w-4" />
+                </Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Set Role for {user.name}</DialogTitle>
+                    <DialogDescription>Assign an administrative role and team access for this user.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div>
+                        <Label htmlFor="role-select">Admin Role</Label>
+                        <Select value={selectedRole} onValueChange={(v) => setSelectedRole(v as UserRole)}>
+                            <SelectTrigger id="role-select">
+                                <SelectValue placeholder="Select a role" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {getRoleOptions().map(opt => (
+                                    <SelectItem key={opt.value} value={opt.value} disabled={isRoleDisabled(opt.value as UserRole)}>
+                                        {opt.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {selectedRole === 'executive' && (
+                        <div>
+                            <Label>Teams</Label>
+                            <MultiSelect 
+                                options={teams}
+                                selected={selectedTeams}
+                                onChange={setSelectedTeams}
+                                placeholder="Assign teams..."
+                            />
+                        </div>
+                    )}
+                    
+                    {(selectedRole === 'team' || selectedRole === 'subTeam' || selectedRole === 'none') && (
+                         <div>
+                            <Label>Team</Label>
+                            <Select value={selectedTeam} onValueChange={setSelectedTeam}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select a team" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {(isExecutiveAdmin ? (currentUserProfile?.teams || []) : teams).map(t => (
+                                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+                    
+                    {selectedRole === 'subTeam' && (
+                        <div>
+                            <Label>Sub-team</Label>
+                             <Input value={user.subTeam || ''} readOnly disabled />
+                        </div>
+                    )}
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                    <Button onClick={handleSave}>Save Changes</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+
 export default function AdminPage() {
-  const { users, deleteUser, setScheduleData, clearAllUsers, updateUserRole, loading } = useAppContext();
+  const { users, deleteUser, setScheduleData, clearAllUsers, loading } = useAppContext();
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedUserRole, setSelectedUserRole] = useState<User['role']>('none');
 
   const { toast } = useToast();
-  const { currentUserProfile, isAdmin, isTeamAdmin, isSubTeamAdmin, loading: authLoading } = useAuth();
+  const { currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges, loading: authLoading } = useAuth();
   const router = useRouter();
-
-  const hasAdminPrivileges = isAdmin || isTeamAdmin || isSubTeamAdmin;
+  
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!authLoading && !hasAdminPrivileges) {
       toast({ variant: "destructive", title: "Unauthorized", description: "You do not have access to this page." });
       router.push("/");
     }
-  }, [currentUserProfile, hasAdminPrivileges, authLoading, router, toast]);
+  }, [hasAdminPrivileges, authLoading, router, toast]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -286,7 +471,11 @@ export default function AdminPage() {
   };
 
   const filteredUsers = useMemo(() => {
-    if (isAdmin) return users;
+    if (isUniversalAdmin) return users;
+    if (isExecutiveAdmin) {
+        const adminTeams = currentUserProfile?.teams || [];
+        return users.filter(u => adminTeams.includes(u.team || ''));
+    }
     if (isTeamAdmin) {
       return users.filter(u => u.team === currentUserProfile?.team);
     }
@@ -294,37 +483,46 @@ export default function AdminPage() {
       return users.filter(u => u.subTeam === currentUserProfile?.subTeam && u.team === currentUserProfile?.team);
     }
     return [];
-  }, [users, isAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
+  }, [users, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
 
-  const canDeleteUser = (user: User) => {
-    if (isAdmin) return true;
-    if (isTeamAdmin) return user.team === currentUserProfile?.team;
-    if (isSubTeamAdmin) return user.subTeam === currentUserProfile?.subTeam && user.team === currentUserProfile?.team;
+  const canDeleteUser = (userToDelete: User) => {
+    if (!currentUserProfile) return false;
+    if (isUniversalAdmin) return userToDelete.id !== currentUserProfile.id; // Cannot delete self
+    if (isExecutiveAdmin) {
+        // Can't delete universal or other executives
+        if (userToDelete.role === 'universal' || userToDelete.role === 'executive') return false;
+        // Can delete users in their teams
+        return (currentUserProfile.teams || []).includes(userToDelete.team || '');
+    }
+    if (isTeamAdmin) {
+        // Can only delete members or sub-team admins in their own team
+        if (userToDelete.role === 'universal' || userToDelete.role === 'executive' || userToDelete.role === 'team') return false;
+        return userToDelete.team === currentUserProfile.team;
+    }
+    if (isSubTeamAdmin) {
+        // Can only delete members of their own sub-team
+        if (userToDelete.role !== 'none') return false;
+        return userToDelete.team === currentUserProfile.team && userToDelete.subTeam === currentUserProfile.subTeam;
+    }
     return false;
   };
-  
-  const canSetRole = (user: User, role: User['role']) => {
-    if (!isAdmin) return false; // Only universal admins can set roles.
-    return true;
-  };
 
-  const handleSetRole = async (userId: string) => {
-    try {
-        await updateUserRole(userId, selectedUserRole);
-        toast({ title: "Success", description: "User role updated." });
-    } catch (e) {
-        toast({ variant: "destructive", title: "Error", description: "Could not update user role." });
-    }
-  };
-  
-  const getRoleIcon = (role?: User['role']) => {
+  const getRoleIcon = (role?: UserRole) => {
     switch (role) {
-      case 'universal': return <ShieldAlert className="h-4 w-4 text-red-500" />;
-      case 'team': return <ShieldCheck className="h-4 w-4 text-blue-500" />;
-      case 'subTeam': return <Shield className="h-4 w-4 text-green-500" />;
+      case 'universal': return <ShieldAlert className="h-4 w-4 text-red-500" title="Universal Admin"/>;
+      case 'executive': return <Crown className="h-4 w-4 text-purple-500" title="Executive Admin" />;
+      case 'team': return <ShieldCheck className="h-4 w-4 text-blue-500" title="Team Admin" />;
+      case 'subTeam': return <Shield className="h-4 w-4 text-green-500" title="Sub-team Admin"/>;
       default: return null;
     }
   };
+  
+  const getTeamDisplay = (user: User) => {
+    if (user.role === 'executive') {
+        return (user.teams || []).join(', ');
+    }
+    return user.team || 'N/A';
+  }
 
   const pageLoading = loading || authLoading;
 
@@ -348,10 +546,10 @@ export default function AdminPage() {
         </h1>
       </header>
 
-      {isAdmin && <CategoryManager />}
+      {(isUniversalAdmin || isExecutiveAdmin) && <CategoryManager />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        {isAdmin && (
+        {isUniversalAdmin && (
             <Card className="lg:col-span-1">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -359,7 +557,7 @@ export default function AdminPage() {
                 Upload/Update Timetable
                 </CardTitle>
                 <CardDescription>
-                Select an Excel file to set or update the schedule. User data will be retained for existing courses.
+                Select an Excel file to set or update the schedule.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -388,14 +586,14 @@ export default function AdminPage() {
             </Card>
         )}
 
-        <Card className={isAdmin ? "lg:col-span-2" : "lg:col-span-3"}>
+        <Card className={isUniversalAdmin ? "lg:col-span-2" : "lg:col-span-3"}>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="w-6 h-6" />
                 Manage Users
               </div>
-              {isAdmin && (
+              {isUniversalAdmin && (
                 <AlertDialog>
                     <AlertDialogTrigger asChild>
                     <Button variant="destructive" size="sm" disabled={users.length === 0}>
@@ -406,7 +604,7 @@ export default function AdminPage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                         <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete all users.
+                        This will permanently delete all users. This action cannot be undone.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -422,7 +620,7 @@ export default function AdminPage() {
                 </AlertDialog>
               )}
             </CardTitle>
-            <CardDescription>View and manage user profiles in the system.</CardDescription>
+            <CardDescription>View, manage, and assign roles to users in the system.</CardDescription>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[400px]">
@@ -435,51 +633,14 @@ export default function AdminPage() {
                         <div>
                             <p className="font-semibold">{user.name} ({user.nuId})</p>
                             <p className="text-sm text-muted-foreground">{user.email}</p>
-                            <p className="text-sm text-muted-foreground">{user.team} {user.subTeam ? `> ${user.subTeam}` : ''} - {user.position}</p>
-                            <p className="text-sm text-muted-foreground">{user.courses.length} courses</p>
-                            {user.offDays.length > 0 && (
-                            <p className="text-xs text-muted-foreground mt-1">Off: {user.offDays.join(", ")}</p>
-                            )}
+                            <p className="text-sm text-muted-foreground">Team(s): {getTeamDisplay(user)}</p>
+                            {user.subTeam && <p className="text-sm text-muted-foreground">Sub-team: {user.subTeam}</p>}
+                            <p className="text-sm text-muted-foreground">Position: {user.position}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
-                        {isAdmin && (
-                             <Dialog onOpenChange={(open) => { if (!open) setSelectedUserRole('none'); }}>
-                                <DialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" onClick={() => setSelectedUserRole(user.role || 'none')}>
-                                        <UserCog className="h-4 w-4" />
-                                    </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                    <DialogHeader>
-                                        <DialogTitle>Set Role for {user.name}</DialogTitle>
-                                        <DialogDescription>Assign an administrative role to this user.</DialogDescription>
-                                    </DialogHeader>
-                                    <div className="py-4">
-                                        <Label htmlFor="role-select">Admin Role</Label>
-                                        <Select value={selectedUserRole} onValueChange={(value) => setSelectedUserRole(value as User['role'])}>
-                                            <SelectTrigger id="role-select">
-                                                <SelectValue placeholder="Select a role" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="none">None</SelectItem>
-                                                <SelectItem value="universal" disabled={!canSetRole(user, 'universal')}>Universal Admin</SelectItem>
-                                                <SelectItem value="team" disabled={!canSetRole(user, 'team')}>Team Admin ({user.team})</SelectItem>
-                                                <SelectItem value="subTeam" disabled={!canSetRole(user, 'subTeam') || !user.subTeam}>Sub-team Admin ({user.subTeam})</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <DialogFooter>
-                                        <DialogClose asChild>
-                                            <Button variant="outline">Cancel</Button>
-                                        </DialogClose>
-                                        <DialogClose asChild>
-                                            <Button onClick={() => handleSetRole(user.id)}>Save Changes</Button>
-                                        </DialogClose>
-                                    </DialogFooter>
-                                </DialogContent>
-                            </Dialog>
-                        )}
+                        <RoleDialog user={user} onUpdate={() => setRefreshKey(k => k + 1)} />
+                        
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
                             <Button variant="ghost" size="icon" disabled={!canDeleteUser(user)}>

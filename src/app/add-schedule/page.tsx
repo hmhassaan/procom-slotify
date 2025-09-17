@@ -97,6 +97,7 @@ export default function AddSchedulePage() {
       subTeam: newUserSubTeam || "",
       position: newUserPosition,
       offDays: userOffDays,
+      role: 'none'
     };
     await addUser(newUser);
     toast({ title: "User Added", description: `${newUser.name} has been added.` });

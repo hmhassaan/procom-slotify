@@ -4,8 +4,9 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { User, CategoryData } from '@/app/types';
+import type { User, CategoryData, UserRole } from '@/app/types';
 
+export type { User, CategoryData, UserRole };
 export type SlotCoursesIndex = Record<string, Record<string, string[]>>;
 export type Schedule = { [day: string]: { [time: string]: string | undefined }; };
 
@@ -19,11 +20,11 @@ interface AppState extends CategoryData {
 
 interface AppContextType extends AppState {
   addUser: (user: User) => Promise<void>;
+  updateUser: (userId: string, data: Partial<User>) => Promise<void>;
   deleteUser: (userId: string) => Promise<void>;
   clearAllUsers: () => Promise<void>;
   setScheduleData: (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => Promise<void>;
   updateCategories: (categories: CategoryData) => Promise<void>;
-  updateUserRole: (userId: string, role: User['role']) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -64,94 +65,61 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await setDoc(categoryDoc, categories);
   }, []);
 
-  const updateUserRole = useCallback(async (userId: string, role: User['role']) => {
+  const updateUser = useCallback(async (userId: string, data: Partial<User>) => {
     const userDoc = doc(db, 'users', userId);
-    await updateDoc(userDoc, { role: role || null });
+    // Firestore does not accept undefined, so we need to clean the object
+    const cleanedData = Object.fromEntries(
+      Object.entries(data).filter(([, value]) => value !== undefined)
+    );
+    await updateDoc(userDoc, cleanedData);
   }, []);
 
 
   useEffect(() => {
     setState(prevState => ({ ...prevState, loading: true }));
     
-    let usersUnsubscribe: () => void;
-    let scheduleUnsubscribe: () => void;
-    let categoriesUnsubscribe: () => void;
+    const usersUnsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+        const usersData = snapshot.docs.map(doc => doc.data() as User);
+        setState(prevState => ({ ...prevState, users: usersData, loading: prevState.loading && false }));
+    });
 
-    const fetchData = async () => {
-      try {
-        const scheduleDoc = doc(db, 'schedule', 'main');
-        const categoriesDoc = doc(db, 'schedule', 'categories');
-        const usersCollection = collection(db, 'users');
-
-        const [scheduleSnap, categoriesSnap] = await Promise.all([
-            getDoc(scheduleDoc),
-            getDoc(categoriesDoc),
-        ]);
-
-        const initialState: Partial<AppState> = {};
-
-        if (scheduleSnap.exists()) {
-            const data = scheduleSnap.data();
-            initialState.allCourses = data.allCourses || [];
-            initialState.timeSlots = data.timeSlots || [];
-            initialState.slotCourses = data.slotCourses || {};
-        }
-
-        if (categoriesSnap.exists()) {
-            const data = categoriesSnap.data() as CategoryData;
-            initialState.teams = data.teams || [];
-            initialState.positions = data.positions || [];
-            initialState.subTeams = data.subTeams || {};
-        }
-
-        setState(prevState => ({ ...prevState, ...initialState }));
-
-        scheduleUnsubscribe = onSnapshot(scheduleDoc, (doc) => {
-          if (doc.exists()) {
+    const scheduleUnsubscribe = onSnapshot(doc(db, 'schedule', 'main'), (doc) => {
+        if (doc.exists()) {
             const data = doc.data();
             setState(prevState => ({
-              ...prevState,
-              allCourses: data.allCourses || [],
-              timeSlots: data.timeSlots || [],
-              slotCourses: data.slotCourses || {},
+            ...prevState,
+            allCourses: data.allCourses || [],
+            timeSlots: data.timeSlots || [],
+            slotCourses: data.slotCourses || {},
             }));
-          } else {
+        } else {
             setState(prevState => ({ ...prevState, allCourses: [], timeSlots: [], slotCourses: {} }));
-          }
-        });
+        }
+    });
+    
+    const categoriesUnsubscribe = onSnapshot(doc(db, 'schedule', 'categories'), (doc) => {
+        if (doc.exists()) {
+            const data = doc.data() as CategoryData;
+            setState(prevState => ({
+                ...prevState,
+                teams: data.teams || [],
+                positions: data.positions || [],
+                subTeams: data.subTeams || {},
+            }));
+        } else {
+            setState(prevState => ({ ...prevState, teams: [], positions: [], subTeams: {} }));
+        }
+    });
 
-        categoriesUnsubscribe = onSnapshot(categoriesDoc, (doc) => {
-            if (doc.exists()) {
-                const data = doc.data() as CategoryData;
-                setState(prevState => ({
-                    ...prevState,
-                    teams: data.teams || [],
-                    positions: data.positions || [],
-                    subTeams: data.subTeams || {},
-                }));
-            } else {
-                setState(prevState => ({ ...prevState, teams: [], positions: [], subTeams: {} }));
-            }
-        });
-
-        usersUnsubscribe = onSnapshot(usersCollection, (snapshot) => {
-          const usersData = snapshot.docs.map(doc => doc.data() as User);
-          setState(prevState => ({ ...prevState, users: usersData }));
-        });
-
-      } catch (error) {
-        console.error("Error fetching initial data:", error);
-      } finally {
+    // Initial load check
+    Promise.all([getDoc(doc(db, 'schedule', 'main')), getDoc(doc(db, 'schedule', 'categories'))]).finally(() => {
         setState(prevState => ({ ...prevState, loading: false }));
-      }
-    };
-
-    fetchData();
+    });
 
     return () => {
-      usersUnsubscribe?.();
-      scheduleUnsubscribe?.();
-      categoriesUnsubscribe?.();
+      usersUnsubscribe();
+      scheduleUnsubscribe();
+      categoriesUnsubscribe();
     };
   }, []);
 
@@ -161,6 +129,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       await setDoc(userDoc, user);
     } catch (error) {
       console.error("Error adding user:", error);
+      throw error;
     }
   };
 
@@ -188,7 +157,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AppContext.Provider value={{ ...state, addUser, deleteUser, clearAllUsers, setScheduleData, updateCategories, updateUserRole }}>
+    <AppContext.Provider value={{ ...state, addUser, updateUser, deleteUser, clearAllUsers, setScheduleData, updateCategories }}>
       {children}
     </AppContext.Provider>
   );

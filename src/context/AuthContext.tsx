@@ -29,9 +29,11 @@ interface AuthContextType {
   currentUser: FirebaseUser | null;
   currentUserProfile: User | null;
   loading: boolean;
-  isAdmin: boolean;
+  isUniversalAdmin: boolean;
+  isExecutiveAdmin: boolean;
   isTeamAdmin: boolean;
   isSubTeamAdmin: boolean;
+  hasAdminPrivileges: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   adminLogin: (password: string) => void;
@@ -45,7 +47,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const { users, loading: appLoading } = useAppContext();
   const signingRef = useRef(false);
 
-  // After successful auth (popup or redirect), go home
   const handleRedirectResult = async () => {
     try {
       await getRedirectResult(auth);
@@ -94,8 +95,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         offDays: [],
         role: 'universal',
       };
-      // This is a bit of a hack to work with the existing structure.
-      // In a real scenario, you wouldn't mix FirebaseUser and a custom object.
       setCurrentUser({
         uid: adminUser.id,
         displayName: adminUser.name,
@@ -148,7 +147,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
              nuId: "N/A",
              email: "admin@example.com",
              courses: [],
-             team: "N/A",
+             teams: [],
              position: "N/A",
              offDays: [],
              role: 'universal',
@@ -157,9 +156,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return users.find(u => u.id === currentUser?.uid) ?? null;
   }, [currentUser, users, isAdminBypass]);
 
-  const isAdmin = currentUserProfile?.role === 'universal';
+  const isUniversalAdmin = currentUserProfile?.role === 'universal';
+  const isExecutiveAdmin = currentUserProfile?.role === 'executive';
   const isTeamAdmin = currentUserProfile?.role === 'team';
   const isSubTeamAdmin = currentUserProfile?.role === 'subTeam';
+  const hasAdminPrivileges = isUniversalAdmin || isExecutiveAdmin || isTeamAdmin || isSubTeamAdmin;
 
   const authLoading = loading || appLoading;
 
@@ -167,9 +168,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     currentUser,
     currentUserProfile,
     loading: authLoading,
-    isAdmin,
+    isUniversalAdmin,
+    isExecutiveAdmin,
     isTeamAdmin,
     isSubTeamAdmin,
+    hasAdminPrivileges,
     signIn,
     signOut: firebaseSignOut,
     adminLogin,

@@ -1,6 +1,9 @@
+
 export type Schedule = {
   [day: string]: { [time: string]: string | undefined };
 };
+
+export type UserRole = 'universal' | 'executive' | 'team' | 'subTeam' | 'none';
 
 export type User = {
   id: string;
@@ -8,11 +11,13 @@ export type User = {
   nuId: string;
   email: string;
   courses: string[];
-  team: string;
+  // `team` for single-team roles, `teams` for executive.
+  team?: string;
+  teams?: string[];
   subTeam?: string;
   position: string;
   offDays: string[];
-  role?: 'universal' | 'team' | 'subTeam';
+  role?: UserRole;
 };
 
 export type FreeSlots = {
