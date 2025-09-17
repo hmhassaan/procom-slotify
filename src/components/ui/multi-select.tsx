@@ -17,7 +17,6 @@ import {
 import {
   Popover,
   PopoverContent,
-  PopoverPortal,
   PopoverTrigger,
 } from "@/components/ui/popover"
 
@@ -42,9 +41,17 @@ export function MultiSelect({
     onChange(selected.filter((i) => i !== item));
   };
 
+  const handleSelect = (currentValue: string) => {
+    if (selected.includes(currentValue)) {
+      handleUnselect(currentValue);
+    } else {
+      onChange([...selected, currentValue]);
+    }
+  };
+
   return (
     <div className="relative">
-      <Popover open={open} onOpenChange={setOpen} modal={true}>
+      <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
             variant="outline"
@@ -58,8 +65,9 @@ export function MultiSelect({
                   <Badge
                     variant="secondary"
                     key={item}
-                    className="mr-1 mb-1"
+                    className="mr-1 mb-1 cursor-pointer"
                     onClick={(e) => {
+                      e.preventDefault();
                       e.stopPropagation();
                       handleUnselect(item);
                     }}
@@ -75,62 +83,49 @@ export function MultiSelect({
             <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverPortal>
-            <PopoverContent
-              className="w-[var(--radix-popover-trigger-width)] p-0 z-[51]"
-              align="start"
-              sideOffset={4}
-            >
-              <Command className="bg-popover">
-                <CommandInput placeholder="Search..." />
-                <CommandList className="max-h-[300px] overflow-auto">
-                  <CommandEmpty>No results found.</CommandEmpty>
-                  <CommandGroup>
-                    {options.map((option) => {
-                      const isSelected = selected.includes(option);
-                      return (
-                        <CommandItem
-                          key={option}
-                          value={option}
-                          onSelect={() => {
-                            if (isSelected) {
-                              handleUnselect(option);
-                            } else {
-                              onChange([...selected, option]);
-                            }
-                            // Keep dropdown open for multi-select
-                          }}
-                          className="cursor-pointer"
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              isSelected ? "opacity-100" : "opacity-0"
-                            )}
-                          />
-                          {option}
-                        </CommandItem>
-                      );
-                    })}
-                  </CommandGroup>
-
-                  {selected.length > 0 && (
-                    <CommandGroup>
-                      <CommandItem
-                        onSelect={() => {
-                          onChange([]);
-                          // Keep dropdown open after clearing
-                        }}
-                        className="justify-center text-center text-destructive hover:text-destructive-foreground cursor-pointer"
-                      >
-                        Clear all
-                      </CommandItem>
-                    </CommandGroup>
-                  )}
-                </CommandList>
-              </Command>
-            </PopoverContent>
-        </PopoverPortal>
+        <PopoverContent className="w-full p-0" align="start">
+          <Command>
+            <CommandInput placeholder="Search..." />
+            <CommandList>
+              <CommandEmpty>No results found.</CommandEmpty>
+              <CommandGroup>
+                {options.map((option) => {
+                  const isSelected = selected.includes(option);
+                  return (
+                    <CommandItem
+                      key={option}
+                      value={option}
+                      onSelect={(currentValue) => {
+                        handleSelect(currentValue);
+                      }}
+                      className="cursor-pointer"
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          isSelected ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      {option}
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+              {selected.length > 0 && (
+                <CommandGroup>
+                  <CommandItem
+                    onSelect={() => {
+                      onChange([]);
+                    }}
+                    className="justify-center text-center text-destructive hover:text-destructive-foreground cursor-pointer"
+                  >
+                    Clear all
+                  </CommandItem>
+                </CommandGroup>
+              )}
+            </CommandList>
+          </Command>
+        </PopoverContent>
       </Popover>
     </div>
   );
