@@ -1,9 +1,9 @@
 
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import * as xlsx from "xlsx";
-import { FileUp, Loader2, AlertCircle, Users, Trash2, Tag, PlusCircle, Building2, Briefcase } from "lucide-react";
+import { FileUp, Loader2, AlertCircle, Users, Trash2, Tag, PlusCircle, Building2, Briefcase, UserCog, Shield, ShieldCheck, ShieldAlert } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,12 +12,13 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppContext } from "@/context/AppContext";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import type { SlotCoursesIndex, CategoryData } from "@/context/AppContext";
+import type { SlotCoursesIndex, CategoryData, User } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger, DialogClose } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const norm = (s: unknown) => (s ?? "").toString().replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
@@ -57,7 +58,6 @@ const CategoryManager = () => {
     let updatedCategories: CategoryData = { teams, positions, subTeams };
     if (type === 'team') {
       updatedCategories.teams = teams.filter(t => t !== value);
-      // Also remove subteams associated with this team
       if (updatedCategories.subTeams[value]) {
         delete updatedCategories.subTeams[value];
       }
@@ -82,7 +82,6 @@ const CategoryManager = () => {
         <CardDescription>Add or remove teams, positions, and sub-teams.</CardDescription>
       </CardHeader>
       <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Teams */}
         <div className="space-y-3">
           <h3 className="font-semibold flex items-center gap-2"><Building2 className="w-5 h-5" /> Teams</h3>
           <div className="flex gap-2">
@@ -101,7 +100,6 @@ const CategoryManager = () => {
           </ScrollArea>
         </div>
 
-        {/* Positions */}
         <div className="space-y-3">
             <h3 className="font-semibold flex items-center gap-2"><Briefcase className="w-5 h-5" /> Positions</h3>
             <div className="flex gap-2">
@@ -120,7 +118,6 @@ const CategoryManager = () => {
             </ScrollArea>
         </div>
 
-        {/* Sub-teams */}
         <div className="space-y-3">
             <h3 className="font-semibold flex items-center gap-2"><Tag className="w-5 h-5" /> Sub-teams</h3>
             <div className="flex gap-2">
@@ -156,19 +153,23 @@ const CategoryManager = () => {
 
 
 export default function AdminPage() {
-  const { users, deleteUser, setScheduleData, clearAllUsers, loading } = useAppContext();
+  const { users, deleteUser, setScheduleData, clearAllUsers, updateUserRole, loading } = useAppContext();
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedUserRole, setSelectedUserRole] = useState<User['role']>('none');
+
   const { toast } = useToast();
-  const { currentUser, isAdminBypass, loading: authLoading } = useAuth();
+  const { currentUserProfile, isAdmin, isTeamAdmin, isSubTeamAdmin, loading: authLoading } = useAuth();
   const router = useRouter();
 
+  const hasAdminPrivileges = isAdmin || isTeamAdmin || isSubTeamAdmin;
+
   useEffect(() => {
-    if (!authLoading && !isAdminBypass) {
+    if (!authLoading && !hasAdminPrivileges) {
       toast({ variant: "destructive", title: "Unauthorized", description: "You do not have access to this page." });
       router.push("/");
     }
-  }, [currentUser, isAdminBypass, authLoading, router, toast]);
+  }, [currentUserProfile, hasAdminPrivileges, authLoading, router, toast]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -283,7 +284,48 @@ export default function AdminPage() {
     reader.readAsArrayBuffer(file);
     event.target.value = "";
   };
+
+  const filteredUsers = useMemo(() => {
+    if (isAdmin) return users;
+    if (isTeamAdmin) {
+      return users.filter(u => u.team === currentUserProfile?.team);
+    }
+    if (isSubTeamAdmin) {
+      return users.filter(u => u.subTeam === currentUserProfile?.subTeam && u.team === currentUserProfile?.team);
+    }
+    return [];
+  }, [users, isAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
+
+  const canDeleteUser = (user: User) => {
+    if (isAdmin) return true;
+    if (isTeamAdmin) return user.team === currentUserProfile?.team;
+    if (isSubTeamAdmin) return user.subTeam === currentUserProfile?.subTeam && user.team === currentUserProfile?.team;
+    return false;
+  };
   
+  const canSetRole = (user: User, role: User['role']) => {
+    if (!isAdmin) return false; // Only universal admins can set roles.
+    return true;
+  };
+
+  const handleSetRole = async (userId: string) => {
+    try {
+        await updateUserRole(userId, selectedUserRole);
+        toast({ title: "Success", description: "User role updated." });
+    } catch (e) {
+        toast({ variant: "destructive", title: "Error", description: "Could not update user role." });
+    }
+  };
+  
+  const getRoleIcon = (role?: User['role']) => {
+    switch (role) {
+      case 'universal': return <ShieldAlert className="h-4 w-4 text-red-500" />;
+      case 'team': return <ShieldCheck className="h-4 w-4 text-blue-500" />;
+      case 'subTeam': return <Shield className="h-4 w-4 text-green-500" />;
+      default: return null;
+    }
+  };
+
   const pageLoading = loading || authLoading;
 
   if (pageLoading) {
@@ -294,7 +336,7 @@ export default function AdminPage() {
       );
   }
 
-  if (!currentUser || !isAdminBypass) {
+  if (!hasAdminPrivileges) {
     return null;
   }
 
@@ -306,121 +348,167 @@ export default function AdminPage() {
         </h1>
       </header>
 
-      <CategoryManager />
+      {isAdmin && <CategoryManager />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileUp className="w-6 h-6" />
-              Upload/Update Timetable
-            </CardTitle>
-            <CardDescription>
-              Select an Excel file to set or update the schedule. User data will be retained for existing courses.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Input
-              id="excel-file"
-              type="file"
-              accept=".xlsx, .xls"
-              onChange={handleFileChange}
-              disabled={isUploading}
-              className="file:text-primary file:font-semibold"
-            />
-            {isUploading && (
-              <div className="flex items-center justify-center mt-4 text-muted-foreground">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processing...
-              </div>
-            )}
-            {error && (
-              <Alert variant="destructive" className="mt-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Error</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
+        {isAdmin && (
+            <Card className="lg:col-span-1">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                <FileUp className="w-6 h-6" />
+                Upload/Update Timetable
+                </CardTitle>
+                <CardDescription>
+                Select an Excel file to set or update the schedule. User data will be retained for existing courses.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Input
+                id="excel-file"
+                type="file"
+                accept=".xlsx, .xls"
+                onChange={handleFileChange}
+                disabled={isUploading}
+                className="file:text-primary file:font-semibold"
+                />
+                {isUploading && (
+                <div className="flex items-center justify-center mt-4 text-muted-foreground">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                </div>
+                )}
+                {error && (
+                <Alert variant="destructive" className="mt-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                </Alert>
+                )}
+            </CardContent>
+            </Card>
+        )}
 
-        <Card className="lg:col-span-2">
+        <Card className={isAdmin ? "lg:col-span-2" : "lg:col-span-3"}>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="w-6 h-6" />
                 Manage Users
               </div>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive" size="sm" disabled={users.length === 0}>
-                    <Trash2 className="mr-2 h-4 w-4" /> Clear All
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete all users.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={async () => {
-                      await clearAllUsers();
-                      toast({ title: "Success", description: "All users have been deleted." });
-                    }}>
-                      Continue
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              {isAdmin && (
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm" disabled={users.length === 0}>
+                        <Trash2 className="mr-2 h-4 w-4" /> Clear All
+                    </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete all users.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={async () => {
+                        await clearAllUsers();
+                        toast({ title: "Success", description: "All users have been deleted." });
+                        }}>
+                        Continue
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+              )}
             </CardTitle>
-            <CardDescription>View and remove user profiles from the system.</CardDescription>
+            <CardDescription>View and manage user profiles in the system.</CardDescription>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[400px]">
               <div className="space-y-2 pr-4">
-                {users.length > 0 ? (
-                  users.map((user) => (
+                {filteredUsers.length > 0 ? (
+                  filteredUsers.map((user) => (
                     <div key={user.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                      <div>
-                        <p className="font-semibold">{user.name} ({user.nuId})</p>
-                        <p className="text-sm text-muted-foreground">{user.email}</p>
-                        <p className="text-sm text-muted-foreground">{user.team} {user.subTeam ? `> ${user.subTeam}` : ''} - {user.position}</p>
-                        <p className="text-sm text-muted-foreground">{user.courses.length} courses</p>
-                        {user.offDays.length > 0 && (
-                          <p className="text-xs text-muted-foreground mt-1">Off: {user.offDays.join(", ")}</p>
-                        )}
+                      <div className="flex items-center gap-3">
+                        {getRoleIcon(user.role)}
+                        <div>
+                            <p className="font-semibold">{user.name} ({user.nuId})</p>
+                            <p className="text-sm text-muted-foreground">{user.email}</p>
+                            <p className="text-sm text-muted-foreground">{user.team} {user.subTeam ? `> ${user.subTeam}` : ''} - {user.position}</p>
+                            <p className="text-sm text-muted-foreground">{user.courses.length} courses</p>
+                            {user.offDays.length > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">Off: {user.offDays.join(", ")}</p>
+                            )}
+                        </div>
                       </div>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete {user.name}?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This action cannot be undone. Are you sure you want to delete this user?
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={async () => {
-                              await deleteUser(user.id);
-                              toast({ title: "User Deleted", description: `${user.name} has been removed.` });
-                            }}>
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <div className="flex items-center gap-1">
+                        {isAdmin && (
+                             <Dialog onOpenChange={(open) => { if (!open) setSelectedUserRole('none'); }}>
+                                <DialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" onClick={() => setSelectedUserRole(user.role || 'none')}>
+                                        <UserCog className="h-4 w-4" />
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Set Role for {user.name}</DialogTitle>
+                                        <DialogDescription>Assign an administrative role to this user.</DialogDescription>
+                                    </DialogHeader>
+                                    <div className="py-4">
+                                        <Label htmlFor="role-select">Admin Role</Label>
+                                        <Select value={selectedUserRole} onValueChange={(value) => setSelectedUserRole(value as User['role'])}>
+                                            <SelectTrigger id="role-select">
+                                                <SelectValue placeholder="Select a role" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">None</SelectItem>
+                                                <SelectItem value="universal" disabled={!canSetRole(user, 'universal')}>Universal Admin</SelectItem>
+                                                <SelectItem value="team" disabled={!canSetRole(user, 'team')}>Team Admin ({user.team})</SelectItem>
+                                                <SelectItem value="subTeam" disabled={!canSetRole(user, 'subTeam') || !user.subTeam}>Sub-team Admin ({user.subTeam})</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <DialogFooter>
+                                        <DialogClose asChild>
+                                            <Button variant="outline">Cancel</Button>
+                                        </DialogClose>
+                                        <DialogClose asChild>
+                                            <Button onClick={() => handleSetRole(user.id)}>Save Changes</Button>
+                                        </DialogClose>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                        )}
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" disabled={!canDeleteUser(user)}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Delete {user.name}?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                This action cannot be undone. Are you sure you want to delete this user?
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={async () => {
+                                await deleteUser(user.id);
+                                toast({ title: "User Deleted", description: `${user.name} has been removed.` });
+                                }}>
+                                Delete
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground text-center pt-10">No users added yet.</p>
+                  <p className="text-sm text-muted-foreground text-center pt-10">No users found.</p>
                 )}
               </div>
             </ScrollArea>

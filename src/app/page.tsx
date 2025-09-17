@@ -9,7 +9,7 @@ import { useEffect } from "react";
 import { useAppContext } from "@/context/AppContext";
 
 export default function Home() {
-  const { currentUser, loading: authLoading, isAdminBypass } = useAuth();
+  const { currentUser, currentUserProfile, loading: authLoading, isAdmin, isTeamAdmin, isSubTeamAdmin } = useAuth();
   const { loading: appLoading } = useAppContext();
   const router = useRouter();
 
@@ -33,10 +33,9 @@ export default function Home() {
     return null; // or a redirect component
   }
 
-  const name =
-    (currentUser as any)?.displayName ??
-    (currentUser as any)?.email ??
-    "there";
+  const name = currentUserProfile?.name || currentUser?.displayName || currentUser?.email || "there";
+  const hasAdminPrivileges = isAdmin || isTeamAdmin || isSubTeamAdmin;
+
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background -mt-16">
@@ -65,7 +64,7 @@ export default function Home() {
               </Button>
             </Link>
           </li>
-          {isAdminBypass && (
+          {hasAdminPrivileges && (
             <li className="md:col-span-2">
               <Link href="/admin" passHref>
                 <Button className="w-full text-lg py-6 px-8" variant="outline">

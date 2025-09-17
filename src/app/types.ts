@@ -12,6 +12,7 @@ export type User = {
   subTeam?: string;
   position: string;
   offDays: string[];
+  role?: 'universal' | 'team' | 'subTeam';
 };
 
 export type FreeSlots = {

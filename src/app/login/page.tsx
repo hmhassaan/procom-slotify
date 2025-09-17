@@ -30,7 +30,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [clicking, setClicking] = useState(false);
 
-  // After successful auth (popup or redirect), go home
   useEffect(() => {
     if (!authLoading && currentUser) {
       router.replace("/");
@@ -41,10 +40,8 @@ export default function LoginPage() {
     if (clicking) return;
     setClicking(true);
     try {
-      await signIn(); // may popup OR redirect
-      // Do NOT push here; redirect flow will navigate, popup flow triggers useEffect above.
+      await signIn(); 
     } catch (error: any) {
-      // For expected popup issues (we fall back to redirect), don't show an error toast.
       const c = error?.code as string | undefined;
       if (
         c === "auth/popup-closed-by-user" ||
@@ -129,7 +126,7 @@ export default function LoginPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Admin Login</AlertDialogTitle>
             <AlertDialogDescription>
-              Enter the admin password to bypass Google Sign-In.
+              Enter the admin password to bypass Google Sign-In. This provides universal admin access.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2">

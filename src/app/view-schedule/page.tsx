@@ -21,7 +21,7 @@ export default function ViewSchedulePage() {
   const [positionFilters, setPositionFilters] = useState<string[]>([]);
   const [subTeamFilters, setSubTeamFilters] = useState<string[]>([]);
 
-  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUser, currentUserProfile, isAdmin, isTeamAdmin, isSubTeamAdmin, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -30,21 +30,48 @@ export default function ViewSchedulePage() {
     }
   }, [currentUser, authLoading, router]);
 
-  const availableSubTeams = useMemo(() => {
-    if (teamFilters.length === 0) {
-      return Object.values(subTeams).flat();
-    }
-    return teamFilters.flatMap(team => subTeams[team] || []);
-  }, [teamFilters, subTeams]);
+  const availableTeams = useMemo(() => {
+    if (isAdmin) return teams;
+    if (isTeamAdmin || isSubTeamAdmin) return currentUserProfile?.team ? [currentUserProfile.team] : [];
+    return [];
+  }, [teams, isAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
 
+  const availableSubTeams = useMemo(() => {
+    if (isAdmin) {
+        if (teamFilters.length === 0) return Object.values(subTeams).flat();
+        return teamFilters.flatMap(team => subTeams[team] || []);
+    }
+    if (isTeamAdmin) {
+        const team = currentUserProfile?.team;
+        if (!team) return [];
+        return subTeams[team] || [];
+    }
+    if (isSubTeamAdmin) {
+        return currentUserProfile?.subTeam ? [currentUserProfile.subTeam] : [];
+    }
+    return [];
+  }, [teamFilters, subTeams, isAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
 
   const filteredUsers = useMemo(() => {
-    return users.filter(user =>
+    let usersToFilter = users;
+
+    if (!isAdmin) {
+        if (isTeamAdmin) {
+            usersToFilter = users.filter(user => user.team === currentUserProfile?.team);
+        } else if (isSubTeamAdmin) {
+            usersToFilter = users.filter(user => user.team === currentUserProfile?.team && user.subTeam === currentUserProfile?.subTeam);
+        } else {
+            // Regular user sees only themselves
+            usersToFilter = users.filter(user => user.id === currentUserProfile?.id);
+        }
+    }
+
+    return usersToFilter.filter(user =>
       (teamFilters.length === 0 || teamFilters.includes(user.team)) &&
       (positionFilters.length === 0 || positionFilters.includes(user.position)) &&
       (subTeamFilters.length === 0 || (user.subTeam && subTeamFilters.includes(user.subTeam)))
     );
-  }, [users, teamFilters, positionFilters, subTeamFilters]);
+  }, [users, teamFilters, positionFilters, subTeamFilters, isAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
 
   const availability = useMemo(() => {
     const availabilityData: Record<string, Record<string, { available: User[], unavailable: User[] }>> = {};
@@ -123,31 +150,35 @@ export default function ViewSchedulePage() {
     return null;
   }
 
+  const hasAdminPrivileges = isAdmin || isTeamAdmin || isSubTeamAdmin;
+
   return (
     <div className="container mx-auto p-4 md:p-8">
       <Card>
         <CardHeader>
           <CardTitle>Team Schedule</CardTitle>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-            <MultiSelect
-              options={teams}
-              selected={teamFilters}
-              onChange={setTeamFilters}
-              placeholder="Filter by team"
-            />
-             <MultiSelect
-              options={availableSubTeams}
-              selected={subTeamFilters}
-              onChange={setSubTeamFilters}
-              placeholder="Filter by sub-team"
-            />
-            <MultiSelect
-              options={positions}
-              selected={positionFilters}
-              onChange={setPositionFilters}
-              placeholder="Filter by position"
-            />
-          </div>
+          {hasAdminPrivileges && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <MultiSelect
+                options={availableTeams}
+                selected={teamFilters}
+                onChange={setTeamFilters}
+                placeholder="Filter by team"
+                />
+                <MultiSelect
+                options={availableSubTeams}
+                selected={subTeamFilters}
+                onChange={setSubTeamFilters}
+                placeholder="Filter by sub-team"
+                />
+                <MultiSelect
+                options={positions}
+                selected={positionFilters}
+                onChange={setPositionFilters}
+                placeholder="Filter by position"
+                />
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isScheduleEmpty ? (
@@ -161,13 +192,13 @@ export default function ViewSchedulePage() {
               </TabsList>
               {weekdays.map(day => (
                 <TabsContent key={day} value={day} className="relative z-10">
-                  <ScrollArea className="h-[60vh] ">
+                  <ScrollArea className="h-[60vh]">
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-1">
                       {timeSlots.map(time => (
                         <div key={time} className="p-4 border rounded-lg">
                           <h4 className="font-semibold border-b pb-2 mb-2">{time}</h4>
                           <div className="space-y-2">
-                            <h5 className="font-medium text-green-600">Available</h5>
+                            <h5 className="font-medium text-green-600">Available ({availability[day]?.[time]?.available.length})</h5>
                             {availability[day]?.[time]?.available.length > 0 ? (
                               availability[day][time].available.map(user => (
                                 <div key={user.id} className="text-sm p-1 bg-green-100 rounded">{user.name}</div>
@@ -175,7 +206,7 @@ export default function ViewSchedulePage() {
                             ) : <p className="text-xs text-muted-foreground">None</p>}
                           </div>
                           <div className="space-y-2 mt-4">
-                            <h5 className="font-medium text-red-600">Unavailable</h5>
+                            <h5 className="font-medium text-red-600">Unavailable ({availability[day]?.[time]?.unavailable.length})</h5>
                             {availability[day]?.[time]?.unavailable.length > 0 ? (
                               availability[day][time].unavailable.map(user => (
                                 <div key={user.id} className="text-sm p-1 bg-red-100 rounded">{user.name}</div>

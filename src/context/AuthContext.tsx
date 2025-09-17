@@ -7,6 +7,7 @@ import React, {
   ReactNode,
   useEffect,
   useRef,
+  useMemo,
 } from "react";
 import {
   onAuthStateChanged,
@@ -18,18 +19,17 @@ import {
   User as FirebaseUser,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import type { User } from "@/app/types";
+import { useAppContext } from "./AppContext";
 
-type CustomUser = {
-  uid: string;
-  displayName: string | null;
-  email: string | null;
-  photoURL: string | null;
-};
 
 interface AuthContextType {
-  currentUser: FirebaseUser | CustomUser | null;
+  currentUser: FirebaseUser | null;
+  currentUserProfile: User | null;
   loading: boolean;
-  isAdminBypass: boolean;
+  isAdmin: boolean;
+  isTeamAdmin: boolean;
+  isSubTeamAdmin: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   adminLogin: (password: string) => void;
@@ -38,10 +38,20 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | CustomUser | null>(null);
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAdminBypass, setIsAdminBypass] = useState(false);
-  const signingRef = useRef(false); // prevent overlapping sign-in attempts
+  const { users, loading: appLoading } = useAppContext();
+  const signingRef = useRef(false);
+
+  // After successful auth (popup or redirect), go home
+  const handleRedirectResult = async () => {
+    try {
+      await getRedirectResult(auth);
+    } catch (error) {
+       // Ignore benign cases like "no redirect"
+    }
+  };
+  handleRedirectResult();
 
   const signIn = async () => {
     if (signingRef.current) return;
@@ -53,80 +63,107 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       await signInWithPopup(auth, provider);
     } catch (error: any) {
-      console.error("Error during sign-in:", error);
-
-      // If the popup can’t complete (most common on dev hosts), fall back to redirect.
       if (
         error?.code === "auth/popup-blocked" ||
         error?.code === "auth/popup-closed-by-user" ||
         error?.code === "auth/cancelled-popup-request"
       ) {
         await signInWithRedirect(auth, provider);
-        return; // page will navigate; no need to unset signingRef here
+        return; 
       }
-
-      // Surface other errors
-      throw error;
+      console.error("Sign in failed", error);
     } finally {
-      // If we didn’t redirect, clear the flag
       signingRef.current = false;
     }
   };
-
-  const firebaseSignOut = async () => {
-    try {
-      await signOut(auth);
-      setIsAdminBypass(false);
-      setCurrentUser(null);
-    } catch (error) {
-      console.error("Error during sign-out:", error);
-    }
-  };
-
+  
+  const [isAdminBypass, setIsAdminBypass] = useState(false);
+  
   const adminLogin = (password: string) => {
     if (password === "ViratKohli18") {
-      const adminUser: CustomUser = {
-        uid: "admin-bypass-user",
-        displayName: "Admin",
+      const adminUser: User = {
+        id: "admin-bypass-user",
+        name: "Admin",
+        nuId: "N/A",
         email: "admin@example.com",
-        photoURL: null,
+        courses: [],
+        team: "N/A",
+        position: "N/A",
+        offDays: [],
+        role: 'universal',
       };
-      setCurrentUser(adminUser);
+      // This is a bit of a hack to work with the existing structure.
+      // In a real scenario, you wouldn't mix FirebaseUser and a custom object.
+      setCurrentUser({
+        uid: adminUser.id,
+        displayName: adminUser.name,
+        email: adminUser.email,
+      } as FirebaseUser);
       setIsAdminBypass(true);
     } else {
       throw new Error("Incorrect password");
     }
   };
 
+
+  const firebaseSignOut = async () => {
+    try {
+      await signOut(auth);
+      setCurrentUser(null);
+      setIsAdminBypass(false);
+    } catch (error) {
+      console.error("Error during sign-out:", error);
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      // Don't persist admin bypass across reloads. It's a security risk.
-      if (!isAdminBypass) {
-        setCurrentUser(user);
-      }
+      setCurrentUser(user);
       setLoading(false);
-    });
-
-    // Complete any pending redirect-based sign-in (no-op if none)
-    getRedirectResult(auth).catch(() => {
-      // Ignore "no redirect" or benign cases
+      // Admin bypass is session-only, so it's not persisted here.
     });
 
     return unsubscribe;
-  }, [isAdminBypass]);
+  }, []);
+  
+  const currentUserProfile = useMemo(() => {
+    if (isAdminBypass) {
+        return {
+             id: "admin-bypass-user",
+             name: "Admin",
+             nuId: "N/A",
+             email: "admin@example.com",
+             courses: [],
+             team: "N/A",
+             position: "N/A",
+             offDays: [],
+             role: 'universal',
+        } as User;
+    }
+    return users.find(u => u.id === currentUser?.uid) ?? null;
+  }, [currentUser, users, isAdminBypass]);
+
+  const isAdmin = currentUserProfile?.role === 'universal';
+  const isTeamAdmin = currentUserProfile?.role === 'team';
+  const isSubTeamAdmin = currentUserProfile?.role === 'subTeam';
+
+  const authLoading = loading || appLoading;
 
   const value = {
     currentUser,
-    loading,
+    currentUserProfile,
+    loading: authLoading,
+    isAdmin,
+    isTeamAdmin,
+    isSubTeamAdmin,
     signIn,
     signOut: firebaseSignOut,
     adminLogin,
-    isAdminBypass,
   };
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {!authLoading && children}
     </AuthContext.Provider>
   );
 };

@@ -23,6 +23,7 @@ interface AppContextType extends AppState {
   clearAllUsers: () => Promise<void>;
   setScheduleData: (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => Promise<void>;
   updateCategories: (categories: CategoryData) => Promise<void>;
+  updateUserRole: (userId: string, role: User['role']) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -63,6 +64,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await setDoc(categoryDoc, categories);
   }, []);
 
+  const updateUserRole = useCallback(async (userId: string, role: User['role']) => {
+    const userDoc = doc(db, 'users', userId);
+    await updateDoc(userDoc, { role: role || null });
+  }, []);
+
 
   useEffect(() => {
     setState(prevState => ({ ...prevState, loading: true }));
@@ -71,7 +77,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     let scheduleUnsubscribe: () => void;
     let categoriesUnsubscribe: () => void;
 
-    // Fetch initial data then set up listeners
     const fetchData = async () => {
       try {
         const scheduleDoc = doc(db, 'schedule', 'main');
@@ -101,7 +106,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
         setState(prevState => ({ ...prevState, ...initialState }));
 
-        // Now set up listeners
         scheduleUnsubscribe = onSnapshot(scheduleDoc, (doc) => {
           if (doc.exists()) {
             const data = doc.data();
@@ -184,7 +188,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AppContext.Provider value={{ ...state, addUser, deleteUser, clearAllUsers, setScheduleData, updateCategories }}>
+    <AppContext.Provider value={{ ...state, addUser, deleteUser, clearAllUsers, setScheduleData, updateCategories, updateUserRole }}>
       {children}
     </AppContext.Provider>
   );
