@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { BookUser, Search, Eye } from "lucide-react";
+import { BookUser, Search, Eye, ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { User } from "@/app/types";
 import { useAuth } from "@/context/AuthContext";
 import { MultiSelect } from "@/components/ui/multi-select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -63,6 +64,19 @@ export default function AddSchedulePage() {
     return { teamOptions: [], subTeamOptions: ownSubTeams };
 
   }, [currentUserProfile, teams, subTeams, isUniversalAdmin, isExecutiveAdmin]);
+
+  const availableVisibilitySubTeams = useMemo(() => {
+    if (visibleToTeams.length === 0) {
+        return visibilityOptions.subTeamOptions;
+    }
+    
+    // Filter sub-teams based on selected visibility teams
+    return Object.entries(subTeams)
+        .filter(([teamName]) => visibleToTeams.includes(teamName))
+        .flatMap(([, subTeamList]) => subTeamList)
+        .filter(subTeam => visibilityOptions.subTeamOptions.includes(subTeam));
+
+  }, [visibleToTeams, subTeams, visibilityOptions.subTeamOptions]);
 
 
   useEffect(() => {
@@ -179,6 +193,20 @@ export default function AddSchedulePage() {
   const isFormDisabled = timeSlots.length === 0 && !isEditing;
   
   const pageLoading = loading || authLoading;
+
+  const handleQuickSelect = (type: 'all-teams' | 'all-subteams' | `subteams-of-${string}`, teamName?: string) => {
+    if (type === 'all-teams') {
+        setVisibleToTeams([...visibilityOptions.teamOptions]);
+    } else if (type === 'all-subteams') {
+        setVisibleToSubTeams([...availableVisibilitySubTeams]);
+    } else if (type.startsWith('subteams-of-') && teamName) {
+        const subteamsToSelect = subTeams[teamName] || [];
+        const currentSelection = new Set(visibleToSubTeams);
+        subteamsToSelect.forEach(st => currentSelection.add(st));
+        setVisibleToSubTeams(Array.from(currentSelection));
+    }
+  };
+
 
   if (pageLoading) {
     return (
@@ -312,7 +340,32 @@ export default function AddSchedulePage() {
           </div>
 
           <div className="space-y-4 rounded-lg border p-4">
+            <div className="flex justify-between items-center">
              <h3 className="font-semibold flex items-center gap-2"><Eye className="w-5 h-5"/> Schedule Visibility</h3>
+                {(isUniversalAdmin || isExecutiveAdmin) && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm">
+                                Quick Select <ChevronDown className="ml-2 h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => handleQuickSelect('all-teams')}>
+                                Select all manageable teams
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => handleQuickSelect('all-subteams')}>
+                                Select all manageable sub-teams
+                            </DropdownMenuItem>
+                            {visibilityOptions.teamOptions.length > 0 && <DropdownMenuSeparator />}
+                            {visibilityOptions.teamOptions.map(team => (
+                                <DropdownMenuItem key={team} onSelect={() => handleQuickSelect(`subteams-of-${team}`, team)}>
+                                    Select all sub-teams of {team}
+                                </DropdownMenuItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
+            </div>
              <p className="text-sm text-muted-foreground">
                 Control which teams or sub-teams can view your schedule.
              </p>
@@ -330,11 +383,11 @@ export default function AddSchedulePage() {
                  <div className="space-y-2">
                     <Label>Allow Sub-teams to View</Label>
                      <MultiSelect
-                        options={visibilityOptions.subTeamOptions}
+                        options={availableVisibilitySubTeams}
                         selected={visibleToSubTeams}
                         onChange={setVisibleToSubTeams}
                         placeholder="Select sub-teams..."
-                        disabled={visibilityOptions.subTeamOptions.length === 0}
+                        disabled={availableVisibilitySubTeams.length === 0}
                     />
                  </div>
              </div>
