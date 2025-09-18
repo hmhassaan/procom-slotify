@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -64,7 +63,7 @@ export default function Navbar() {
         <div className="mr-4 flex items-center">
           <Link href="/" className="mr-6 flex items-center space-x-2">
             <Logo />
-            <span className="font-bold">Procom Schedule Manager</span>
+            <span className="font-bold">PROCOM Slotify</span>
           </Link>
           <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
             {navItems.map(item => (
