@@ -198,15 +198,6 @@ export default function ViewSchedulePage() {
 
   const pageLoading = loading || authLoading;
 
-  const getUserInitials = (name: string) => {
-    if (!name) return "";
-    const parts = name.split(" ");
-    if (parts.length > 1) {
-      return parts[0][0] + parts[parts.length - 1][0];
-    }
-    return name.substring(0, 2);
-  };
-
   if (pageLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -280,9 +271,7 @@ export default function ViewSchedulePage() {
                                       <Tooltip key={user.id} delayDuration={100}>
                                         <TooltipTrigger asChild>
                                            <div className="flex items-center gap-2 p-1.5 rounded-md bg-green-50 hover:bg-green-100 transition-colors">
-                                              <Avatar className="h-6 w-6 text-xs">
-                                                  <AvatarFallback className="bg-green-200 text-green-800 font-bold">{getUserInitials(user.name)}</AvatarFallback>
-                                              </Avatar>
+                                              <span className="text-lg w-6 text-center">{positionMap.get(user.position)}</span>
                                               <span className="text-sm font-medium text-green-800">{user.name}</span>
                                            </div>
                                         </TooltipTrigger>
@@ -304,9 +293,7 @@ export default function ViewSchedulePage() {
                                        <Tooltip key={user.id} delayDuration={100}>
                                         <TooltipTrigger asChild>
                                            <div className="flex items-center gap-2 p-1.5 rounded-md bg-red-50 hover:bg-red-100 transition-colors">
-                                               <Avatar className="h-6 w-6 text-xs">
-                                                  <AvatarFallback className="bg-red-200 text-red-800 font-bold">{getUserInitials(user.name)}</AvatarFallback>
-                                               </Avatar>
+                                               <span className="text-lg w-6 text-center">{positionMap.get(user.position)}</span>
                                               <span className="text-sm font-medium text-red-800">{user.name}</span>
                                            </div>
                                         </TooltipTrigger>
@@ -335,3 +322,5 @@ export default function ViewSchedulePage() {
     </TooltipProvider>
   );
 }
+
+    
