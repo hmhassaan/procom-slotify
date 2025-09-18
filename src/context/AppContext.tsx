@@ -1,10 +1,11 @@
 
 "use client";
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User, CategoryData, UserRole, Position } from '@/app/types';
+import { useAuth } from './AuthContext';
 
 export type { User, CategoryData, UserRole, Position };
 export type SlotCoursesIndex = Record<string, Record<string, string[]>>;
@@ -16,12 +17,20 @@ interface AppState extends CategoryData {
   timeSlots: string[];
   slotCourses: SlotCoursesIndex;
   loading: boolean;
+  currentUserProfile: User | null;
+  isUniversalAdmin: boolean;
+  isExecutiveAdmin: boolean;
+  isTeamAdmin: boolean;
+  isSubTeamAdmin: boolean;
+  hasAdminPrivileges: boolean;
 }
 
 interface AppContextType extends AppState {
   addUser: (user: User) => Promise<void>;
   updateUser: (userId: string, data: Partial<User>) => Promise<void>;
   deleteUser: (userId: string) => Promise<void>;
+  canDeleteUser: (userToDelete: User) => boolean;
+  canEditUser: (userToEdit: User) => boolean;
   clearAllUsers: () => Promise<void>;
   setScheduleData: (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => Promise<void>;
   updateCategories: (categories: CategoryData) => Promise<void>;
@@ -30,7 +39,9 @@ interface AppContextType extends AppState {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
-  const [state, setState] = useState<AppState>({
+  const { currentUser, isAdminBypass, loading: authLoading } = useAuth();
+
+  const [state, setState] = useState<Omit<AppState, 'currentUserProfile' | 'isUniversalAdmin' | 'isExecutiveAdmin' | 'isTeamAdmin' | 'isSubTeamAdmin' | 'hasAdminPrivileges'>>({
     users: [],
     allCourses: [],
     timeSlots: [],
@@ -40,6 +51,70 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     subTeams: {},
     loading: true,
   });
+
+  const currentUserProfile = useMemo(() => {
+    if (isAdminBypass) {
+        return {
+             id: "admin-bypass-user",
+             name: "Admin",
+             nuId: "N/A",
+             email: "admin@example.com",
+             courses: [],
+             teams: [],
+             position: "N/A",
+             offDays: [],
+             role: 'universal',
+             createdAt: Date.now()
+        } as User;
+    }
+    return state.users.find(u => u.id === currentUser?.uid) ?? null;
+  }, [currentUser, state.users, isAdminBypass]);
+
+  const isUniversalAdmin = currentUserProfile?.role === 'universal';
+  const isExecutiveAdmin = currentUserProfile?.role === 'executive';
+  const isTeamAdmin = currentUserProfile?.role === 'team';
+  const isSubTeamAdmin = currentUserProfile?.role === 'subTeam';
+  const hasAdminPrivileges = isUniversalAdmin || isExecutiveAdmin || isTeamAdmin || isSubTeamAdmin;
+
+  const canEditUser = useCallback((userToEdit: User) => {
+    if (!currentUserProfile) return false;
+    
+    // Universal admin can edit anyone
+    if (isUniversalAdmin) return true;
+    
+    // Admins cannot edit users with a higher or equal role
+    const roleHierarchy = { 'none': 0, 'subTeam': 1, 'team': 2, 'executive': 3, 'universal': 4 };
+    const adminRoleLevel = roleHierarchy[currentUserProfile.role || 'none'];
+    const targetRoleLevel = roleHierarchy[userToEdit.role || 'none'];
+    if (adminRoleLevel <= targetRoleLevel) return false;
+
+    // Executive admins can edit users in their managed teams
+    if (isExecutiveAdmin) {
+        const managedTeams = currentUserProfile.teams || [];
+        return !!userToEdit.team && managedTeams.includes(userToEdit.team);
+    }
+    
+    // Team admins can edit users in their own team
+    if (isTeamAdmin) {
+        return userToEdit.team === currentUserProfile.team;
+    }
+
+    // Sub-team admins can edit users in their own sub-team
+    if (isSubTeamAdmin) {
+        return userToEdit.team === currentUserProfile.team && userToEdit.subTeam === currentUserProfile.subTeam;
+    }
+
+    return false;
+  }, [currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin]);
+
+  const canDeleteUser = (userToDelete: User) => {
+    if (!currentUser ) return false;
+    // Prevent deleting self
+    if (userToDelete.id === currentUser.uid) return false;
+    
+    return canEditUser(userToDelete);
+  };
+  
 
   const setScheduleData = useCallback(async (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => {
     const { slotCourses, allCourses, timeSlots } = data;
@@ -79,7 +154,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setState(prevState => ({ ...prevState, loading: true }));
     
     const usersUnsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
-        const usersData = snapshot.docs.map(doc => doc.data() as User);
+        const usersData = snapshot.docs.map(doc => {
+            const data = doc.data();
+            // Add createdAt if it's missing for older users
+            return {
+                ...data,
+                createdAt: data.createdAt || 0,
+            } as User;
+        }).sort((a, b) => b.createdAt - a.createdAt); // Sort by most recent
         setState(prevState => ({ ...prevState, users: usersData, loading: prevState.loading && false }));
     });
 
@@ -143,7 +225,11 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const addUser = async (user: User) => {
     try {
       const userDoc = doc(db, 'users', user.id);
-      await setDoc(userDoc, user);
+      const userWithTimestamp = {
+          ...user,
+          createdAt: user.createdAt || Date.now(),
+      }
+      await setDoc(userDoc, userWithTimestamp);
     } catch (error) {
       console.error("Error adding user:", error);
       throw error;
@@ -172,9 +258,28 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       console.error("Error clearing all users:", error);
     }
   };
+  
+  const value: AppContextType = {
+      ...state,
+      loading: state.loading || authLoading,
+      currentUserProfile,
+      isUniversalAdmin,
+      isExecutiveAdmin,
+      isTeamAdmin,
+      isSubTeamAdmin,
+      hasAdminPrivileges,
+      addUser,
+      updateUser,
+      deleteUser,
+      canDeleteUser,
+      canEditUser,
+      clearAllUsers,
+      setScheduleData,
+      updateCategories,
+  };
 
   return (
-    <AppContext.Provider value={{ ...state, addUser, updateUser, deleteUser, clearAllUsers, setScheduleData, updateCategories }}>
+    <AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>
   );

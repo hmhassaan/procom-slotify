@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import * as xlsx from "xlsx";
-import { FileUp, Loader2, AlertCircle, Users, Trash2, Tag, PlusCircle, Building2, Briefcase, UserCog, Shield, ShieldCheck, ShieldAlert, Crown, GripVertical, Pencil } from "lucide-react";
+import { FileUp, Loader2, AlertCircle, Users, Trash2, Tag, PlusCircle, Building2, Briefcase, UserCog, Shield, ShieldCheck, ShieldAlert, Crown, GripVertical, Pencil, Users2, Clock } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { MultiSelect } from "@/components/ui/multi-select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DndContext,
   closestCenter,
@@ -44,7 +45,7 @@ const norm = (s: unknown) => (s ?? "").toString().replace(/\s*\n\s*/g, " ").repl
 const SortablePositionItem = ({ position, onRemove, onEdit }: { position: Position; onRemove: (id: string) => void; onEdit: (position: Position) => void; }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: position.id });
   const style = { transform: CSS.Transform.toString(transform), transition };
-  const { isUniversalAdmin } = useAuth();
+  const { isUniversalAdmin } = useAppContext();
 
   return (
     <div ref={setNodeRef} style={style} className="flex items-center gap-2 bg-muted rounded-lg p-2">
@@ -65,8 +66,7 @@ const SortablePositionItem = ({ position, onRemove, onEdit }: { position: Positi
 
 
 const CategoryManager = () => {
-  const { teams, positions, subTeams, updateCategories, loading } = useAppContext();
-  const { isUniversalAdmin, isExecutiveAdmin, currentUserProfile } = useAuth();
+  const { teams, positions, subTeams, updateCategories, loading, isUniversalAdmin, isExecutiveAdmin, currentUserProfile } = useAppContext();
 
   const [newTeam, setNewTeam] = useState("");
   
@@ -142,11 +142,13 @@ const CategoryManager = () => {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
-    if (active.id !== over?.id) {
+    if (over && active.id !== over.id) {
       const oldIndex = positions.findIndex((p) => p.id === active.id);
-      const newIndex = positions.findIndex((p) => p.id === over!.id);
-      const reorderedPositions = arrayMove(positions, oldIndex, newIndex);
-      await updateCategories({ teams, positions: reorderedPositions, subTeams });
+      const newIndex = positions.findIndex((p) => p.id === over.id);
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const reorderedPositions = arrayMove(positions, oldIndex, newIndex);
+        await updateCategories({ teams, positions: reorderedPositions, subTeams });
+      }
     }
   };
 
@@ -288,20 +290,24 @@ const CategoryManager = () => {
 
 
 const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) => {
-    const { updateUser, teams, subTeams } = useAppContext();
-    const { currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin } = useAuth();
+    const { updateUser, teams, subTeams, canEditUser, isUniversalAdmin, isExecutiveAdmin, currentUserProfile } = useAppContext();
+    const { currentUser } = useAuth();
     const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
     const [selectedRole, setSelectedRole] = useState<UserRole>(user.role || 'none');
-    const [selectedTeams, setSelectedTeams] = useState<string[]>(user.teams || (user.team ? [user.team] : []));
+    const [selectedTeams, setSelectedTeams] = useState<string[]>(user.teams || []);
     const [selectedTeam, setSelectedTeam] = useState<string>(user.team || '');
     const [selectedSubTeam, setSelectedSubTeam] = useState<string>(user.subTeam || '');
+    
+    const isEditingSelf = user.id === currentUser?.uid;
 
     useEffect(() => {
-        setSelectedRole(user.role || 'none');
-        setSelectedTeams(user.teams || (user.team ? [user.team] : []));
-        setSelectedTeam(user.team || '');
-        setSelectedSubTeam(user.subTeam || '');
+        if (isOpen) {
+            setSelectedRole(user.role || 'none');
+            setSelectedTeams(user.teams || []);
+            setSelectedTeam(user.team || '');
+            setSelectedSubTeam(user.subTeam || '');
+        }
     }, [user, isOpen]);
     
     const availableSubTeamsForTeam = useMemo(() => {
@@ -310,23 +316,19 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
 
 
     const handleSave = async () => {
-        const updatedUserData: Partial<User> = { role: selectedRole };
-        if (selectedRole === 'executive') {
-            updatedUserData.teams = selectedTeams;
-            updatedUserData.team = undefined; // clear single team
-            updatedUserData.subTeam = undefined; // clear sub team
-        } else if (selectedRole === 'team') {
-            updatedUserData.team = selectedTeam;
-            updatedUserData.teams = undefined; // clear multi-teams
-            updatedUserData.subTeam = undefined; // clear sub team
-        } else if (selectedRole === 'subTeam') {
-            updatedUserData.team = selectedTeam;
-            updatedUserData.subTeam = selectedSubTeam;
-            updatedUserData.teams = undefined; // clear multi-teams
-        } else { // 'none'
-            updatedUserData.team = selectedTeam || user.team;
-            updatedUserData.subTeam = selectedSubTeam || user.subTeam;
-            updatedUserData.teams = undefined;
+        const updatedUserData: Partial<User> = { 
+            role: selectedRole,
+            team: selectedTeam || user.team,
+            subTeam: selectedSubTeam || user.subTeam,
+            teams: selectedRole === 'executive' ? selectedTeams : [],
+        };
+        
+        // Don't let non-universal admins change team/subteam for roles higher than them
+        if (currentUserProfile?.role !== 'universal') {
+            if (user.role === 'executive' || user.role === 'team' || user.role === 'universal') {
+                 delete updatedUserData.team;
+                 delete updatedUserData.subTeam;
+            }
         }
 
         try {
@@ -339,61 +341,30 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
         }
     };
     
-    const canSetRole = (targetUser: User, role: UserRole) => {
-        if (!currentUserProfile) return false;
-        if (isUniversalAdmin) return true;
-        
-        if (isExecutiveAdmin) {
-            // Executive can't edit universal or other executives
-            if (targetUser.role === 'universal' || targetUser.role === 'executive') return false;
-            // Can only assign roles to users within their managed teams
-            if (!currentUserProfile.teams?.includes(targetUser.team || '')) return false;
-            return role === 'team' || role === 'subTeam' || role === 'none';
-        }
-        
-        if (isTeamAdmin) {
-             // Team admin can't edit any admin higher or equal
-            if (targetUser.role !== 'none' && targetUser.role !== 'subTeam') return false;
-            // Can only assign roles to users in their own team
-            if (targetUser.team !== currentUserProfile.team) return false;
-            return role === 'subTeam' || role === 'none';
-        }
-        return false;
-    };
-
     const getRoleOptions = () => {
         const allRoles = [
             { value: 'none', label: 'None' },
-            { value: 'universal', label: 'Universal Admin' },
-            { value: 'executive', label: 'Executive Admin' },
-            { value: 'team', label: 'Team Admin' },
             { value: 'subTeam', label: 'Sub-team Admin' },
+            { value: 'team', label: 'Team Admin' },
+            { value: 'executive', label: 'Executive Admin' },
+            { value: 'universal', label: 'Universal Admin' },
         ];
         
         if (isUniversalAdmin) return allRoles;
+        if (isExecutiveAdmin) return allRoles.filter(opt => opt.value !== 'universal');
         
-        return allRoles.filter(opt => canSetRole(user, opt.value as UserRole) || opt.value === user.role);
+        // Team admins and below can't change roles
+        return allRoles.filter(opt => opt.value === user.role);
     }
     
-    const canEditTarget = useMemo(() => {
-        if (!currentUserProfile) return false;
-        if (isUniversalAdmin) return true; // Universal can edit anyone
-        if (isExecutiveAdmin) {
-            // Cannot edit universal or other executives
-            if (user.role === 'universal' || user.role === 'executive') return false;
-            // Can edit users within their teams
-            return (currentUserProfile.teams || []).includes(user.team || '');
-        }
-        if (isTeamAdmin) {
-            // Cannot edit universal, exec, or other team admins
-            if (user.role === 'universal' || user.role === 'executive' || user.role === 'team') return false;
-            // Can edit users within their own team
-            return user.team === currentUserProfile.team;
-        }
-        // Sub-team admins and regular users cannot edit roles.
+    const canEditTarget = useMemo(() => canEditUser(user), [user, canEditUser]);
+    const canChangeRole = useMemo(() => {
+        if (isEditingSelf && !isUniversalAdmin) return false;
+        if (!canEditTarget) return false;
+        if (isUniversalAdmin) return true;
+        if (isExecutiveAdmin && user.role !== 'universal' && user.role !== 'executive') return true;
         return false;
-    }, [user, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin]);
-
+    }, [canEditTarget, isUniversalAdmin, isExecutiveAdmin, user.role, isEditingSelf]);
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -410,13 +381,13 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                 <div className="py-4 space-y-4">
                     <div>
                         <Label htmlFor="role-select">Admin Role</Label>
-                        <Select value={selectedRole} onValueChange={(v) => setSelectedRole(v as UserRole)} disabled={!canEditTarget}>
+                        <Select value={selectedRole} onValueChange={(v) => setSelectedRole(v as UserRole)} disabled={!canChangeRole}>
                             <SelectTrigger id="role-select">
                                 <SelectValue placeholder="Select a role" />
                             </SelectTrigger>
                             <SelectContent>
                                 {getRoleOptions().map(opt => (
-                                    <SelectItem key={opt.value} value={opt.value} disabled={!canSetRole(user, opt.value as UserRole)}>
+                                    <SelectItem key={opt.value} value={opt.value}>
                                         {opt.label}
                                     </SelectItem>
                                 ))}
@@ -424,49 +395,46 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                         </Select>
                     </div>
 
-                    {selectedRole === 'executive' && isUniversalAdmin && (
+                    {selectedRole === 'executive' && (
                         <div>
-                            <Label>Teams</Label>
+                            <Label>Manages Teams</Label>
                             <MultiSelect 
                                 options={teams}
                                 selected={selectedTeams}
                                 onChange={setSelectedTeams}
-                                placeholder="Assign teams..."
+                                placeholder="Assign teams to manage..."
+                                disabled={!canChangeRole}
                             />
                         </div>
                     )}
                     
-                    {(selectedRole === 'team' || selectedRole === 'subTeam' || selectedRole === 'none') && (
-                         <div>
-                            <Label>Team</Label>
-                            <Select value={selectedTeam} onValueChange={setSelectedTeam} disabled={!canEditTarget || selectedRole === 'executive'}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select a team" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {(isExecutiveAdmin ? (currentUserProfile?.teams || []) : teams).map(t => (
-                                        <SelectItem key={t} value={t}>{t}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    )}
+                    <div>
+                        <Label>Member of Team</Label>
+                        <Select value={selectedTeam} onValueChange={setSelectedTeam} disabled={!canEditTarget}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select a team" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {teams.map(t => (
+                                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                     
-                    {selectedRole === 'subTeam' && (
-                         <div>
-                            <Label>Sub-team</Label>
-                             <Select value={selectedSubTeam} onValueChange={setSelectedSubTeam} disabled={!canEditTarget || !selectedTeam}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select a sub-team" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                   {availableSubTeamsForTeam.map(st => (
-                                        <SelectItem key={st} value={st}>{st}</SelectItem>
-                                   ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    )}
+                    <div>
+                        <Label>Member of Sub-team</Label>
+                            <Select value={selectedSubTeam} onValueChange={setSelectedSubTeam} disabled={!canEditTarget || !selectedTeam}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select a sub-team" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {availableSubTeamsForTeam.map(st => (
+                                    <SelectItem key={st} value={st}>{st}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
@@ -477,14 +445,81 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
     );
 };
 
+const UserListItem = ({ user, onUpdate }: { user: User; onUpdate: () => void; }) => {
+    const { positions, canDeleteUser, deleteUser } = useAppContext();
+    const { toast } = useToast();
+    const positionMap = useMemo(() => new Map(positions.map(p => [p.name, p.icon])), [positions]);
+  
+    const getTeamDisplay = (user: User) => {
+        if (user.role === 'executive' && user.teams && user.teams.length > 0) {
+            return `Manages: ${user.teams.join(', ')}`;
+        }
+        return `Team: ${user.team || 'N/A'}`;
+    }
+
+    return (
+        <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+            <div className="flex items-center gap-3">
+            {getRoleIcon(user.role)}
+            <div>
+                <p className="font-semibold">{user.name} ({user.nuId})</p>
+                <p className="text-sm text-muted-foreground">{user.email}</p>
+                <p className="text-sm text-muted-foreground">{getTeamDisplay(user)}</p>
+                {user.subTeam && <p className="text-sm text-muted-foreground">Sub-team: {user.subTeam}</p>}
+                <p className="text-sm text-muted-foreground flex items-center gap-1">
+                    Position: {user.position} {positionMap.get(user.position) && <span>{positionMap.get(user.position)}</span>}
+                </p>
+            </div>
+            </div>
+            <div className="flex items-center gap-1">
+            <RoleDialog user={user} onUpdate={onUpdate} />
+            
+            <AlertDialog>
+                <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="icon" disabled={!canDeleteUser(user)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Delete {user.name}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                    This action cannot be undone. Are you sure you want to delete this user?
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={async () => {
+                    await deleteUser(user.id);
+                    toast({ title: "User Deleted", description: `${user.name} has been removed.` });
+                    }}>
+                    Delete
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            </div>
+        </div>
+    )
+}
+
+const getRoleIcon = (role?: UserRole) => {
+    switch (role) {
+      case 'universal': return <ShieldAlert className="h-4 w-4 text-red-500" title="Universal Admin"/>;
+      case 'executive': return <Crown className="h-4 w-4 text-purple-500" title="Executive Admin" />;
+      case 'team': return <ShieldCheck className="h-4 w-4 text-blue-500" title="Team Admin" />;
+      case 'subTeam': return <Shield className="h-4 w-4 text-green-500" title="Sub-team Admin"/>;
+      default: return null;
+    }
+};
 
 export default function AdminPage() {
-  const { users, positions, deleteUser, setScheduleData, clearAllUsers, loading } = useAppContext();
+  const { users, positions, subTeams, setScheduleData, clearAllUsers, loading, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, hasAdminPrivileges } = useAppContext();
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { toast } = useToast();
-  const { currentUser, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges, loading: authLoading } = useAuth();
+  const { loading: authLoading } = useAuth();
   const router = useRouter();
   
   const [refreshKey, setRefreshKey] = useState(0);
@@ -610,62 +645,56 @@ export default function AdminPage() {
     event.target.value = "";
   };
 
-  const filteredUsers = useMemo(() => {
-    if (isUniversalAdmin) return users;
-    if (isExecutiveAdmin) {
+  const filteredUsersForRecency = useMemo(() => {
+    let usersToFilter: User[] = [];
+    if (isUniversalAdmin) usersToFilter = users;
+    else if (isExecutiveAdmin) {
         const adminTeams = currentUserProfile?.teams || [];
-        return users.filter(u => adminTeams.includes(u.team || ''));
+        usersToFilter = users.filter(u => u.team && adminTeams.includes(u.team));
+    } else if (isTeamAdmin) {
+        usersToFilter = users.filter(u => u.team === currentUserProfile?.team);
+    } else { // sub-team admin
+        usersToFilter = users.filter(u => u.team === currentUserProfile?.team && u.subTeam === currentUserProfile?.subTeam);
     }
-    if (isTeamAdmin) {
-      return users.filter(u => u.team === currentUserProfile?.team);
-    }
-    if (isSubTeamAdmin) {
-      return users.filter(u => u.subTeam === currentUserProfile?.subTeam && u.team === currentUserProfile?.team);
-    }
-    return [];
-  }, [users, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
+    // A simplistic way to sort by recency, assuming user IDs (which are Firebase UIDs) are time-ordered.
+    // For more robust sorting, a `createdAt` timestamp would be needed on the User object.
+    return [...usersToFilter].reverse();
+  }, [users, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, currentUserProfile]);
 
-  const canDeleteUser = (userToDelete: User) => {
-    if (!currentUserProfile || userToDelete.id === currentUser?.uid) return false; // Cannot delete self
-    if (isUniversalAdmin) return true;
-    if (isExecutiveAdmin) {
-        // Can't delete universal or other executives
-        if (userToDelete.role === 'universal' || userToDelete.role === 'executive') return false;
-        // Can delete users in their teams
-        return (currentUserProfile.teams || []).includes(userToDelete.team || '');
-    }
-    if (isTeamAdmin) {
-        // Can only delete members or sub-team admins in their own team
-        if (userToDelete.role === 'universal' || userToDelete.role === 'executive' || userToDelete.role === 'team') return false;
-        return userToDelete.team === currentUserProfile.team;
-    }
-    if (isSubTeamAdmin) {
-        // Can only delete members of their own sub-team
-        if (userToDelete.role !== 'none') return false;
-        return userToDelete.team === currentUserProfile.team && userToDelete.subTeam === currentUserProfile.subTeam;
-    }
-    return false;
-  };
+  const teamViewData = useMemo(() => {
+    let teamsToShow: string[] = [];
+    if (isUniversalAdmin) teamsToShow = Object.keys(subTeams);
+    else if (isExecutiveAdmin) teamsToShow = currentUserProfile?.teams || [];
+    else if (isTeamAdmin && currentUserProfile?.team) teamsToShow = [currentUserProfile.team];
 
-  const getRoleIcon = (role?: UserRole) => {
-    switch (role) {
-      case 'universal': return <ShieldAlert className="h-4 w-4 text-red-500" title="Universal Admin"/>;
-      case 'executive': return <Crown className="h-4 w-4 text-purple-500" title="Executive Admin" />;
-      case 'team': return <ShieldCheck className="h-4 w-4 text-blue-500" title="Team Admin" />;
-      case 'subTeam': return <Shield className="h-4 w-4 text-green-500" title="Sub-team Admin"/>;
-      default: return null;
-    }
-  };
+    const positionOrder = new Map(positions.map((p, i) => [p.name, i]));
+    const sortUsers = (userList: User[]) => {
+      return userList.sort((a, b) => {
+        const orderA = positionOrder.get(a.position) ?? 999;
+        const orderB = positionOrder.get(b.position) ?? 999;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.name.localeCompare(b.name);
+      });
+    };
+
+    return teamsToShow.map(team => {
+        const teamUsers = users.filter(u => u.team === team);
+        const teamSubTeams = subTeams[team] || [];
+        const usersInNoSubTeam = teamUsers.filter(u => !u.subTeam);
+
+        const subTeamsWithUsers = teamSubTeams.map(subTeamName => ({
+            name: subTeamName,
+            users: sortUsers(teamUsers.filter(u => u.subTeam === subTeamName))
+        }));
+
+        return {
+            name: team,
+            usersInNoSubTeam: sortUsers(usersInNoSubTeam),
+            subTeams: subTeamsWithUsers,
+        }
+    }).filter(team => team.usersInNoSubTeam.length > 0 || team.subTeams.some(st => st.users.length > 0));
+  }, [users, positions, subTeams, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, currentUserProfile]);
   
-  const getTeamDisplay = (user: User) => {
-    if (user.role === 'executive') {
-        return (user.teams || []).join(', ');
-    }
-    return user.team || 'N/A';
-  }
-  
-  const positionMap = useMemo(() => new Map(positions.map(p => [p.name, p.icon])), [positions]);
-
 
   const pageLoading = loading || authLoading;
 
@@ -766,63 +795,54 @@ export default function AdminPage() {
             <CardDescription>View, manage, and assign roles to users in the system.</CardDescription>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="h-[400px]">
-              <div className="space-y-2 pr-4">
-                {filteredUsers.length > 0 ? (
-                  filteredUsers.map((user) => (
-                    <div key={user.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                      <div className="flex items-center gap-3">
-                        {getRoleIcon(user.role)}
-                        <div>
-                            <p className="font-semibold">{user.name} ({user.nuId})</p>
-                            <p className="text-sm text-muted-foreground">{user.email}</p>
-                            <p className="text-sm text-muted-foreground">Team(s): {getTeamDisplay(user)}</p>
-                            {user.subTeam && <p className="text-sm text-muted-foreground">Sub-team: {user.subTeam}</p>}
-                            <p className="text-sm text-muted-foreground flex items-center gap-1">
-                              Position: {user.position} {positionMap.get(user.position) && <span>{positionMap.get(user.position)}</span>}
-                            </p>
+            <Tabs defaultValue="team-view">
+                <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="team-view"><Users2 className="mr-2 h-4 w-4"/>Team View</TabsTrigger>
+                    <TabsTrigger value="recency-view"><Clock className="mr-2 h-4 w-4"/>Recency View</TabsTrigger>
+                </TabsList>
+                <TabsContent value="team-view">
+                    <ScrollArea className="h-[400px] mt-4">
+                        <div className="space-y-4 pr-4">
+                        {teamViewData.length > 0 ? (
+                            teamViewData.map(team => (
+                                <div key={team.name}>
+                                    <h3 className="text-lg font-semibold border-b pb-2 mb-2">{team.name}</h3>
+                                    <div className="space-y-2">
+                                        {team.usersInNoSubTeam.map(user => <UserListItem key={user.id} user={user} onUpdate={() => setRefreshKey(k => k + 1)} />)}
+                                        {team.subTeams.map(subTeam => (
+                                            <div key={subTeam.name} className="pl-4">
+                                                <h4 className="text-md font-medium text-muted-foreground mt-2 mb-1">{subTeam.name}</h4>
+                                                <div className="space-y-2">
+                                                    {subTeam.users.map(user => <UserListItem key={user.id} user={user} onUpdate={() => setRefreshKey(k => k + 1)} />)}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                             <p className="text-sm text-muted-foreground text-center pt-10">No users found in your managed teams.</p>
+                        )}
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <RoleDialog user={user} onUpdate={() => setRefreshKey(k => k + 1)} />
-                        
-                        <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" disabled={!canDeleteUser(user)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Delete {user.name}?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                This action cannot be undone. Are you sure you want to delete this user?
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={async () => {
-                                await deleteUser(user.id);
-                                toast({ title: "User Deleted", description: `${user.name} has been removed.` });
-                                }}>
-                                Delete
-                                </AlertDialogAction>
-                            </AlertDialogFooter>
-                            </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center pt-10">No users found.</p>
-                )}
-              </div>
-            </ScrollArea>
+                    </ScrollArea>
+                </TabsContent>
+                <TabsContent value="recency-view">
+                    <ScrollArea className="h-[400px] mt-4">
+                        <div className="space-y-2 pr-4">
+                            {filteredUsersForRecency.length > 0 ? (
+                                filteredUsersForRecency.map((user) => (
+                                    <UserListItem key={user.id} user={user} onUpdate={() => setRefreshKey(k => k + 1)} />
+                                ))
+                            ) : (
+                                <p className="text-sm text-muted-foreground text-center pt-10">No users found.</p>
+                            )}
+                        </div>
+                    </ScrollArea>
+                </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </div>
     </div>
   );
 }
-
-    

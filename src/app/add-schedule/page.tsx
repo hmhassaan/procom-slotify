@@ -20,10 +20,10 @@ import { useAuth } from "@/context/AuthContext";
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 export default function AddSchedulePage() {
-  const { allCourses, timeSlots, addUser, loading, teams, positions, subTeams } = useAppContext();
+  const { allCourses, timeSlots, addUser, loading, teams, positions, subTeams, currentUserProfile } = useAppContext();
   const router = useRouter();
   const { toast } = useToast();
-  const { currentUser, currentUserProfile, loading: authLoading } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
   
   const [isEditing, setIsEditing] = useState(false);
   const [userName, setUserName] = useState("");
@@ -131,7 +131,8 @@ export default function AddSchedulePage() {
       // Preserve existing role, or set to 'none' for new users
       role: currentUserProfile?.role || 'none',
       // Preserve executive teams if they exist
-      ...(currentUserProfile?.role === 'executive' && { teams: currentUserProfile.teams })
+      ...(currentUserProfile?.role === 'executive' && { teams: currentUserProfile.teams }),
+      createdAt: currentUserProfile?.createdAt || Date.now(),
     };
     await addUser(userData); // addUser is actually a setDoc, so it works for create and update
     toast({ title: isEditing ? "Schedule Updated" : "Schedule Added", description: `Your schedule has been ${isEditing ? 'updated' : 'saved'}.` });

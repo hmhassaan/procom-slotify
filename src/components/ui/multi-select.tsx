@@ -20,6 +20,7 @@ interface MultiSelectProps {
   onChange: (selected: string[]) => void;
   className?: string;
   placeholder?: string;
+  disabled?: boolean;
 }
 
 export function MultiSelect({
@@ -28,6 +29,7 @@ export function MultiSelect({
   onChange,
   className,
   placeholder = "Select...",
+  disabled = false,
 }: MultiSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [searchValue, setSearchValue] = React.useState("");
@@ -61,6 +63,7 @@ export function MultiSelect({
             variant="outline"
             role="combobox"
             aria-expanded={open}
+            disabled={disabled}
             className={cn(
               "w-full justify-between text-left font-normal",
               selected.length > 0 ? "h-auto min-h-10" : "h-10",
@@ -83,6 +86,16 @@ export function MultiSelect({
                         e.stopPropagation();
                         handleUnselect(item);
                       }}
+                      onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleUnselect(item);
+                          }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Remove ${item}`}
                     >
                       <X className="h-3 w-3" />
                     </span>

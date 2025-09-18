@@ -16,9 +16,11 @@ import {
 } from "@/components/ui/sheet";
 import { useState } from "react";
 import { Separator } from "@/components/ui/separator";
+import { useAppContext } from "@/context/AppContext";
 
 export default function Navbar() {
-  const { currentUser, currentUserProfile, hasAdminPrivileges, signOut: firebaseSignOut } = useAuth();
+  const { currentUser, signOut: firebaseSignOut } = useAuth();
+  const { hasAdminPrivileges } = useAppContext();
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -122,5 +124,3 @@ export default function Navbar() {
     </header>
   );
 }
-
-    

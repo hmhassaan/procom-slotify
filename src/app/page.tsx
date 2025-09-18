@@ -10,8 +10,8 @@ import { useEffect } from "react";
 import { useAppContext } from "@/context/AppContext";
 
 export default function Home() {
-  const { currentUser, currentUserProfile, loading: authLoading, hasAdminPrivileges } = useAuth();
-  const { loading: appLoading } = useAppContext();
+  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUserProfile, hasAdminPrivileges, loading: appLoading } = useAppContext();
   const router = useRouter();
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export default function Home() {
           <li>
             <Link href="/add-schedule" passHref>
               <Button className="w-full text-lg py-6 px-8" variant="outline">
-                Add Your Schedule <ArrowRight className="ml-2" />
+                My Schedule <ArrowRight className="ml-2" />
               </Button>
             </Link>
           </li>

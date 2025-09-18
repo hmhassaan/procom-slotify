@@ -28,12 +28,12 @@ const getCurrentDay = () => {
 
 
 export default function ViewSchedulePage() {
-  const { users, timeSlots, slotCourses, loading, teams, positions, subTeams } = useAppContext();
+  const { users, timeSlots, slotCourses, loading, teams, positions, subTeams, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges } = useAppContext();
   const [teamFilters, setTeamFilters] = useState<string[]>([]);
   const [positionFilters, setPositionFilters] = useState<string[]>([]);
   const [subTeamFilters, setSubTeamFilters] = useState<string[]>([]);
 
-  const { currentUser, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges, loading: authLoading } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -46,58 +46,56 @@ export default function ViewSchedulePage() {
     if (isUniversalAdmin) return teams;
     if (isExecutiveAdmin) return currentUserProfile?.teams || [];
     if (isTeamAdmin || isSubTeamAdmin) return currentUserProfile?.team ? [currentUserProfile.team] : [];
-    return [];
+    // Regular user sees their team in the filter, but it won't show anyone else.
+    return currentUserProfile?.team ? [currentUserProfile.team] : [];
   }, [teams, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
 
   const availableSubTeams = useMemo(() => {
+    const teamSelection = teamFilters.length > 0 ? teamFilters : availableTeams;
+
     const allSubTeams = Object.entries(subTeams)
-        .filter(([team]) => teamFilters.length === 0 || teamFilters.includes(team))
+        .filter(([team]) => teamSelection.includes(team))
         .flatMap(([, subs]) => subs);
 
-    if (isUniversalAdmin) {
-        return allSubTeams;
-    }
-    if (isExecutiveAdmin) {
-        const execTeams = currentUserProfile?.teams || [];
-        return Object.entries(subTeams)
-            .filter(([team]) => execTeams.includes(team))
-            .flatMap(([, subs]) => subs);
-    }
-    if (isTeamAdmin) {
-        const team = currentUserProfile?.team;
-        if (!team) return [];
-        return subTeams[team] || [];
-    }
     if (isSubTeamAdmin) {
         return currentUserProfile?.subTeam ? [currentUserProfile.subTeam] : [];
     }
-    return [];
-  }, [teamFilters, subTeams, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
+    
+    return allSubTeams;
+  }, [teamFilters, subTeams, availableTeams, isSubTeamAdmin, currentUserProfile]);
   
   const positionOptions = useMemo(() => positions.map(p => p.name), [positions]);
 
   const filteredUsers = useMemo(() => {
-    let usersToFilter: User[] = [];
+    const self = currentUserProfile ? users.find(u => u.id === currentUserProfile.id) : null;
+    let otherUsers: User[] = [];
 
+    // Determine which users are potentially visible based on admin level
     if (isUniversalAdmin) {
-        usersToFilter = users;
+        otherUsers = users;
     } else if (isExecutiveAdmin) {
         const execTeams = currentUserProfile?.teams || [];
-        usersToFilter = users.filter(user => execTeams.includes(user.team || ''));
+        otherUsers = users.filter(user => execTeams.includes(user.team || ''));
     } else if (isTeamAdmin) {
-        usersToFilter = users.filter(user => user.team === currentUserProfile?.team);
+        otherUsers = users.filter(user => user.team === currentUserProfile?.team);
     } else if (isSubTeamAdmin) {
-        usersToFilter = users.filter(user => user.team === currentUserProfile?.team && user.subTeam === currentUserProfile?.subTeam);
-    } else {
-        // Regular user sees only themselves
-        usersToFilter = users.filter(user => user.id === currentUserProfile?.id);
+        otherUsers = users.filter(user => user.team === currentUserProfile?.team && user.subTeam === currentUserProfile?.subTeam);
     }
 
-    return usersToFilter.filter(user =>
+    // Apply filters to the pool of "other" users
+    const filteredOthers = otherUsers.filter(user =>
       (teamFilters.length === 0 || teamFilters.includes(user.team || '')) &&
       (positionFilters.length === 0 || positionFilters.includes(user.position)) &&
       (subTeamFilters.length === 0 || (user.subTeam && subTeamFilters.includes(user.subTeam)))
     );
+
+    // Create a Set for quick lookups, and ensure the current user is always included
+    const finalUserSet = new Set(filteredOthers);
+    if (self) {
+      finalUserSet.add(self);
+    }
+    
+    return Array.from(finalUserSet);
   }, [users, teamFilters, positionFilters, subTeamFilters, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
   
   const availability = useMemo(() => {
@@ -205,30 +203,31 @@ export default function ViewSchedulePage() {
           <CardHeader>
             <CardTitle>Team Schedule</CardTitle>
             <CardDescription>
-              View team availability based on selected filters.
+              View team availability based on selected filters. Your schedule is always visible.
             </CardDescription>
-            {hasAdminPrivileges && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-                  <MultiSelect
-                      options={availableTeams}
-                      selected={teamFilters}
-                      onChange={setTeamFilters}
-                      placeholder="Filter by team..."
-                  />
-                  <MultiSelect
-                      options={availableSubTeams}
-                      selected={subTeamFilters}
-                      onChange={setSubTeamFilters}
-                      placeholder="Filter by sub-team..."
-                  />
-                  <MultiSelect
-                      options={positionOptions}
-                      selected={positionFilters}
-                      onChange={setPositionFilters}
-                      placeholder="Filter by position..."
-                  />
-              </div>
-            )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+                <MultiSelect
+                    options={availableTeams}
+                    selected={teamFilters}
+                    onChange={setTeamFilters}
+                    placeholder="Filter by team..."
+                    disabled={!hasAdminPrivileges}
+                />
+                <MultiSelect
+                    options={availableSubTeams}
+                    selected={subTeamFilters}
+                    onChange={setSubTeamFilters}
+                    placeholder="Filter by sub-team..."
+                    disabled={!hasAdminPrivileges || availableSubTeams.length === 0}
+                />
+                <MultiSelect
+                    options={positionOptions}
+                    selected={positionFilters}
+                    onChange={setPositionFilters}
+                    placeholder="Filter by position..."
+                    disabled={!hasAdminPrivileges}
+                />
+            </div>
           </CardHeader>
           <CardContent>
             {isScheduleEmpty ? (
@@ -264,6 +263,7 @@ export default function ViewSchedulePage() {
                                         </TooltipTrigger>
                                         <TooltipContent>
                                           <p>{user.nuId}</p>
+                                          <p>{user.team} {user.subTeam && `> ${user.subTeam}`}</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     ))
@@ -284,6 +284,7 @@ export default function ViewSchedulePage() {
                                         </TooltipTrigger>
                                         <TooltipContent>
                                           <p>{user.nuId}</p>
+                                          <p>{user.team} {user.subTeam && `> ${user.subTeam}`}</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     ))
@@ -305,5 +306,3 @@ export default function ViewSchedulePage() {
     </TooltipProvider>
   );
 }
-
-    

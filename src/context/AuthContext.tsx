@@ -8,7 +8,6 @@ import React, {
   ReactNode,
   useEffect,
   useRef,
-  useMemo,
 } from "react";
 import {
   onAuthStateChanged,
@@ -20,20 +19,13 @@ import {
   User as FirebaseUser,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import type { User } from "@/app/types";
-import { useAppContext } from "./AppContext";
 import { toast } from "@/hooks/use-toast";
 
 
 interface AuthContextType {
   currentUser: FirebaseUser | null;
-  currentUserProfile: User | null;
   loading: boolean;
-  isUniversalAdmin: boolean;
-  isExecutiveAdmin: boolean;
-  isTeamAdmin: boolean;
-  isSubTeamAdmin: boolean;
-  hasAdminPrivileges: boolean;
+  isAdminBypass: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   adminLogin: (password: string) => void;
@@ -44,17 +36,22 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const { users, loading: appLoading } = useAppContext();
   const signingRef = useRef(false);
+  const [isAdminBypass, setIsAdminBypass] = useState(false);
 
-  const handleRedirectResult = async () => {
-    try {
-      await getRedirectResult(auth);
-    } catch (error) {
-       // Ignore benign cases like "no redirect"
-    }
-  };
-  handleRedirectResult();
+  useEffect(() => {
+    const handleRedirectResult = async () => {
+      try {
+        // This is to handle the redirect result after a user signs in.
+        // It's safe to call on every page load.
+        await getRedirectResult(auth);
+      } catch (error) {
+         // This can happen if there is no redirect result to process.
+         // We can safely ignore it.
+      }
+    };
+    handleRedirectResult();
+  }, []);
 
   const signIn = async () => {
     if (signingRef.current) return;
@@ -71,6 +68,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         error?.code === "auth/popup-closed-by-user" ||
         error?.code === "auth/cancelled-popup-request"
       ) {
+        // Fallback to redirect if popups are blocked/closed.
         await signInWithRedirect(auth, provider);
         return; 
       }
@@ -80,26 +78,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
   
-  const [isAdminBypass, setIsAdminBypass] = useState(false);
-  
   const adminLogin = (password: string) => {
     if (password === "ViratKohli18") {
-      const adminUser: User = {
-        id: "admin-bypass-user",
-        name: "Admin",
-        nuId: "N/A",
+      const adminUser: Partial<FirebaseUser> = {
+        uid: "admin-bypass-user",
+        displayName: "Admin",
         email: "admin@example.com",
-        courses: [],
-        team: "N/A",
-        position: "N/A",
-        offDays: [],
-        role: 'universal',
       };
-      setCurrentUser({
-        uid: adminUser.id,
-        displayName: adminUser.name,
-        email: adminUser.email,
-      } as FirebaseUser);
+      setCurrentUser(adminUser as FirebaseUser);
       setIsAdminBypass(true);
     } else {
       throw new Error("Incorrect password");
@@ -139,40 +125,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return unsubscribe;
   }, [isAdminBypass]);
   
-  const currentUserProfile = useMemo(() => {
-    if (isAdminBypass) {
-        return {
-             id: "admin-bypass-user",
-             name: "Admin",
-             nuId: "N/A",
-             email: "admin@example.com",
-             courses: [],
-             teams: [],
-             position: "N/A",
-             offDays: [],
-             role: 'universal',
-        } as User;
-    }
-    return users.find(u => u.id === currentUser?.uid) ?? null;
-  }, [currentUser, users, isAdminBypass]);
-
-  const isUniversalAdmin = currentUserProfile?.role === 'universal';
-  const isExecutiveAdmin = currentUserProfile?.role === 'executive';
-  const isTeamAdmin = currentUserProfile?.role === 'team';
-  const isSubTeamAdmin = currentUserProfile?.role === 'subTeam';
-  const hasAdminPrivileges = isUniversalAdmin || isExecutiveAdmin || isTeamAdmin || isSubTeamAdmin;
-
-  const authLoading = loading || appLoading;
 
   const value = {
     currentUser,
-    currentUserProfile,
-    loading: authLoading,
-    isUniversalAdmin,
-    isExecutiveAdmin,
-    isTeamAdmin,
-    isSubTeamAdmin,
-    hasAdminPrivileges,
+    loading,
+    isAdminBypass,
     signIn,
     signOut: firebaseSignOut,
     adminLogin,
@@ -180,7 +137,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {!authLoading && children}
+      {!loading && children}
     </AuthContext.Provider>
   );
 };

@@ -11,13 +11,16 @@ export type User = {
   nuId: string;
   email: string;
   courses: string[];
-  // `team` for single-team roles, `teams` for executive.
-  team?: string;
+  // Team the user is a member of.
+  team: string;
+  // For executive roles, the teams they are allowed to manage.
   teams?: string[];
   subTeam?: string;
   position: string;
   offDays: string[];
   role?: UserRole;
+  // A timestamp for when the user was created, useful for sorting.
+  createdAt: number; 
 };
 
 export type FreeSlots = {
