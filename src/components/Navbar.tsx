@@ -17,6 +17,7 @@ import {
 import { useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { useAppContext } from "@/context/AppContext";
+import { Logo } from "./Logo";
 
 export default function Navbar() {
   const { currentUser, signOut: firebaseSignOut } = useAuth();
@@ -62,6 +63,7 @@ export default function Navbar() {
       <div className="container flex h-14 items-center">
         <div className="mr-4 flex items-center">
           <Link href="/" className="mr-6 flex items-center space-x-2">
+            <Logo />
             <span className="font-bold">Procom Schedule Manager</span>
           </Link>
           <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
