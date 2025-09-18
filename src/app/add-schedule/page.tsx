@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { BookUser, Search } from "lucide-react";
+import { BookUser, Search, Eye } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { useToast } from "@/hooks/use-toast";
@@ -16,11 +16,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { User } from "@/app/types";
 import { useAuth } from "@/context/AuthContext";
+import { MultiSelect } from "@/components/ui/multi-select";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 export default function AddSchedulePage() {
-  const { allCourses, timeSlots, addUser, loading, teams, positions, subTeams, currentUserProfile } = useAppContext();
+  const { allCourses, timeSlots, addUser, loading, teams, positions, subTeams, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin } = useAppContext();
   const router = useRouter();
   const { toast } = useToast();
   const { currentUser, loading: authLoading } = useAuth();
@@ -35,10 +36,33 @@ export default function AddSchedulePage() {
   const [offDays, setOffDays] = useState<Record<string, boolean>>({});
   const [courseSearchTerm, setCourseSearchTerm] = useState("");
   const [selectedCourses, setSelectedCourses] = useState<Record<string, boolean>>({});
+  const [visibleToTeams, setVisibleToTeams] = useState<string[]>([]);
+  const [visibleToSubTeams, setVisibleToSubTeams] = useState<string[]>([]);
   
   const availableSubTeams = useMemo(() => {
     return userTeam ? subTeams[userTeam] || [] : [];
   }, [userTeam, subTeams]);
+
+  // Determine which teams/sub-teams can be selected for visibility
+  const visibilityOptions = useMemo(() => {
+    if (!currentUserProfile) return { teamOptions: [], subTeamOptions: [] };
+
+    if (isUniversalAdmin) {
+      const allSubTeams = Object.values(subTeams).flat();
+      return { teamOptions: teams, subTeamOptions: allSubTeams };
+    }
+    if (isExecutiveAdmin) {
+      const manageableTeams = currentUserProfile.teams || [];
+      const manageableSubTeams = Object.entries(subTeams)
+        .filter(([team]) => manageableTeams.includes(team))
+        .flatMap(([, subs]) => subs);
+      return { teamOptions: manageableTeams, subTeamOptions: manageableSubTeams };
+    }
+    // For Team Admin, Sub-team Admin, and regular users
+    const ownSubTeams = subTeams[currentUserProfile.team] || [];
+    return { teamOptions: [], subTeamOptions: ownSubTeams };
+
+  }, [currentUserProfile, teams, subTeams, isUniversalAdmin, isExecutiveAdmin]);
 
 
   useEffect(() => {
@@ -68,6 +92,9 @@ export default function AddSchedulePage() {
             return acc;
         }, {} as Record<string, boolean>);
         setSelectedCourses(userCourses);
+        
+        setVisibleToTeams(currentUserProfile.scheduleVisibleTo?.teams || []);
+        setVisibleToSubTeams(currentUserProfile.scheduleVisibleTo?.subTeams || []);
 
     } else if (currentUser) {
         // New user, prefill from auth
@@ -128,6 +155,10 @@ export default function AddSchedulePage() {
       subTeam: userSubTeam || "",
       position: userPosition,
       offDays: currentOffDays,
+      scheduleVisibleTo: {
+        teams: visibleToTeams,
+        subTeams: visibleToSubTeams,
+      },
       // Preserve existing role, or set to 'none' for new users
       role: currentUserProfile?.role || 'none',
       // Preserve executive teams if they exist
@@ -279,6 +310,36 @@ export default function AddSchedulePage() {
               </div>
             </ScrollArea>
           </div>
+
+          <div className="space-y-4 rounded-lg border p-4">
+             <h3 className="font-semibold flex items-center gap-2"><Eye className="w-5 h-5"/> Schedule Visibility</h3>
+             <p className="text-sm text-muted-foreground">
+                Control which teams or sub-teams can view your schedule.
+             </p>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div className="space-y-2">
+                    <Label>Allow Teams to View</Label>
+                     <MultiSelect
+                        options={visibilityOptions.teamOptions}
+                        selected={visibleToTeams}
+                        onChange={setVisibleToTeams}
+                        placeholder="Select teams..."
+                        disabled={visibilityOptions.teamOptions.length === 0}
+                    />
+                 </div>
+                 <div className="space-y-2">
+                    <Label>Allow Sub-teams to View</Label>
+                     <MultiSelect
+                        options={visibilityOptions.subTeamOptions}
+                        selected={visibleToSubTeams}
+                        onChange={setVisibleToSubTeams}
+                        placeholder="Select sub-teams..."
+                        disabled={visibilityOptions.subTeamOptions.length === 0}
+                    />
+                 </div>
+             </div>
+          </div>
+
           <Button onClick={handleSaveSchedule} className="w-full">
             {isEditing ? "Update Schedule" : "Submit Schedule"}
           </Button>

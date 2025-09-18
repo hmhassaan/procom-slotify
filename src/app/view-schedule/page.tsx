@@ -67,36 +67,50 @@ export default function ViewSchedulePage() {
   const positionOptions = useMemo(() => positions.map(p => p.name), [positions]);
 
   const filteredUsers = useMemo(() => {
-    const self = currentUserProfile ? users.find(u => u.id === currentUserProfile.id) : null;
-    let otherUsers: User[] = [];
+    if (!currentUserProfile) return [];
 
-    // Determine which users are potentially visible based on admin level
-    if (isUniversalAdmin) {
-        otherUsers = users;
-    } else if (isExecutiveAdmin) {
-        const execTeams = currentUserProfile?.teams || [];
-        otherUsers = users.filter(user => execTeams.includes(user.team || ''));
-    } else if (isTeamAdmin) {
-        otherUsers = users.filter(user => user.team === currentUserProfile?.team);
-    } else if (isSubTeamAdmin) {
-        otherUsers = users.filter(user => user.team === currentUserProfile?.team && user.subTeam === currentUserProfile?.subTeam);
-    }
+    const canViewUser = (targetUser: User): boolean => {
+      // Users can always see themselves
+      if (targetUser.id === currentUserProfile.id) return true;
 
-    // Apply filters to the pool of "other" users
-    const filteredOthers = otherUsers.filter(user =>
+      // Admins have broad visibility
+      if (isUniversalAdmin) return true;
+      if (isExecutiveAdmin && (currentUserProfile.teams || []).includes(targetUser.team)) return true;
+      if (isTeamAdmin && currentUserProfile.team === targetUser.team) return true;
+      if (isSubTeamAdmin && currentUserProfile.team === targetUser.team && currentUserProfile.subTeam === targetUser.subTeam) return true;
+      
+      // Check for explicit visibility grant
+      const visibleTo = targetUser.scheduleVisibleTo;
+      if (visibleTo) {
+          if (currentUserProfile.team && visibleTo.teams.includes(currentUserProfile.team)) {
+              return true;
+          }
+          if (currentUserProfile.subTeam && visibleTo.subTeams.includes(currentUserProfile.subTeam)) {
+              return true;
+          }
+      }
+      return false;
+    };
+    
+    // First, get all users the current user is allowed to see
+    const visibleUsers = users.filter(canViewUser);
+
+    // Then, apply the UI filters on that set of users
+    const filteredSet = visibleUsers.filter(user =>
       (teamFilters.length === 0 || teamFilters.includes(user.team || '')) &&
       (positionFilters.length === 0 || positionFilters.includes(user.position)) &&
       (subTeamFilters.length === 0 || (user.subTeam && subTeamFilters.includes(user.subTeam)))
     );
-
-    // Create a Set for quick lookups, and ensure the current user is always included
-    const finalUserSet = new Set(filteredOthers);
-    if (self) {
-      finalUserSet.add(self);
+    
+    // Ensure the current user is always in the final list if they exist
+    const finalUserSet = new Set(filteredSet);
+    const self = users.find(u => u.id === currentUserProfile.id);
+    if(self) {
+        finalUserSet.add(self);
     }
     
     return Array.from(finalUserSet);
-  }, [users, teamFilters, positionFilters, subTeamFilters, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, currentUserProfile]);
+  }, [users, teamFilters, positionFilters, subTeamFilters, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin]);
   
   const availability = useMemo(() => {
     const availabilityData: Record<string, Record<string, { available: User[], unavailable: User[] }>> = {};
@@ -225,7 +239,6 @@ export default function ViewSchedulePage() {
                     selected={positionFilters}
                     onChange={setPositionFilters}
                     placeholder="Filter by position..."
-                    disabled={!hasAdminPrivileges}
                 />
             </div>
           </CardHeader>

@@ -19,6 +19,10 @@ export type User = {
   position: string;
   offDays: string[];
   role?: UserRole;
+  scheduleVisibleTo?: {
+    teams: string[];
+    subTeams: string[];
+  };
   // A timestamp for when the user was created, useful for sorting.
   createdAt: number; 
 };
