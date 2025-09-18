@@ -11,7 +11,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -198,6 +198,15 @@ export default function ViewSchedulePage() {
 
   const pageLoading = loading || authLoading;
 
+  const getUserInitials = (name: string) => {
+    if (!name) return "";
+    const parts = name.split(" ");
+    if (parts.length > 1) {
+      return parts[0][0] + parts[parts.length - 1][0];
+    }
+    return name.substring(0, 2);
+  };
+
   if (pageLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -213,13 +222,13 @@ export default function ViewSchedulePage() {
   return (
     <TooltipProvider>
       <div className="container mx-auto p-4 md:p-8">
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden shadow-lg">
           <CardHeader>
-            <CardTitle>Team Schedule</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-3xl font-bold tracking-tight">Team Schedule</CardTitle>
+            <CardDescription className="text-lg text-muted-foreground">
               View team availability based on selected filters. Your schedule is always visible.
             </CardDescription>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6">
                 <MultiSelect
                     options={availableTeams}
                     selected={teamFilters}
@@ -244,8 +253,9 @@ export default function ViewSchedulePage() {
           </CardHeader>
           <CardContent>
             {isScheduleEmpty ? (
-              <div className="text-center py-10 text-muted-foreground">
-                <p>The schedule is not available yet. Please ask an admin to upload the timetable.</p>
+              <div className="text-center py-16 text-muted-foreground">
+                <p className="text-lg">The schedule is not available yet.</p>
+                <p>Please ask an admin to upload the timetable.</p>
               </div>
             ) : (
               <Tabs defaultValue={getCurrentDay()}>
@@ -257,51 +267,57 @@ export default function ViewSchedulePage() {
                     <ScrollArea className="h-[60vh] -mx-6 px-6">
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 py-4">
                         {timeSlots.map(time => (
-                          <div key={time} className="border rounded-lg bg-card shadow-sm">
-                            <div className="p-4 border-b">
+                          <div key={time} className="border rounded-xl bg-card shadow-md transition-shadow hover:shadow-xl">
+                            <div className="p-3 border-b bg-muted/50 rounded-t-xl">
                                 <h4 className="font-semibold text-center text-sm">{time}</h4>
                             </div>
-                            <div className="p-4 space-y-4">
+                            <div className="p-3 space-y-3">
                               <div>
-                                <h5 className="font-medium text-sm text-green-600 mb-2">Available ({availability[day]?.[time]?.available.length})</h5>
+                                <h5 className="font-bold text-sm text-green-600 mb-2">Available ({availability[day]?.[time]?.available.length})</h5>
                                 <div className="space-y-2">
                                   {availability[day]?.[time]?.available.length > 0 ? (
                                     availability[day][time].available.map(user => (
                                       <Tooltip key={user.id} delayDuration={100}>
                                         <TooltipTrigger asChild>
-                                          <Badge variant="outline" className="w-full justify-start font-normal bg-green-50 border-green-200 text-green-800">
-                                             {positionMap.get(user.position) && <span className="mr-2">{positionMap.get(user.position)}</span>}
-                                            {user.name}
-                                          </Badge>
+                                           <div className="flex items-center gap-2 p-1.5 rounded-md bg-green-50 hover:bg-green-100 transition-colors">
+                                              <Avatar className="h-6 w-6 text-xs">
+                                                  <AvatarFallback className="bg-green-200 text-green-800 font-bold">{getUserInitials(user.name)}</AvatarFallback>
+                                              </Avatar>
+                                              <span className="text-sm font-medium text-green-800">{user.name}</span>
+                                           </div>
                                         </TooltipTrigger>
                                         <TooltipContent>
+                                          <p className="font-semibold">{user.position} {positionMap.get(user.position)}</p>
                                           <p>{user.nuId}</p>
                                           <p>{user.team} {user.subTeam && `> ${user.subTeam}`}</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     ))
-                                  ) : <p className="text-xs text-muted-foreground italic">None available</p>}
+                                  ) : <p className="text-xs text-muted-foreground italic text-center py-2">None</p>}
                                 </div>
                               </div>
-                              <div >
-                                <h5 className="font-medium text-sm text-red-600 mb-2">Unavailable ({availability[day]?.[time]?.unavailable.length})</h5>
+                              <div>
+                                <h5 className="font-bold text-sm text-red-600 mb-2">Unavailable ({availability[day]?.[time]?.unavailable.length})</h5>
                                  <div className="space-y-2">
                                     {availability[day]?.[time]?.unavailable.length > 0 ? (
                                     availability[day][time].unavailable.map(user => (
                                        <Tooltip key={user.id} delayDuration={100}>
                                         <TooltipTrigger asChild>
-                                          <Badge variant="outline" className="w-full justify-start font-normal bg-red-50 border-red-200 text-red-800">
-                                            {positionMap.get(user.position) && <span className="mr-2">{positionMap.get(user.position)}</span>}
-                                            {user.name}
-                                          </Badge>
+                                           <div className="flex items-center gap-2 p-1.5 rounded-md bg-red-50 hover:bg-red-100 transition-colors">
+                                               <Avatar className="h-6 w-6 text-xs">
+                                                  <AvatarFallback className="bg-red-200 text-red-800 font-bold">{getUserInitials(user.name)}</AvatarFallback>
+                                               </Avatar>
+                                              <span className="text-sm font-medium text-red-800">{user.name}</span>
+                                           </div>
                                         </TooltipTrigger>
                                         <TooltipContent>
+                                          <p className="font-semibold">{user.position} {positionMap.get(user.position)}</p>
                                           <p>{user.nuId}</p>
                                           <p>{user.team} {user.subTeam && `> ${user.subTeam}`}</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     ))
-                                    ) : <p className="text-xs text-muted-foreground italic">All available</p>}
+                                    ) : <p className="text-xs text-muted-foreground italic text-center py-2">None</p>}
                                  </div>
                               </div>
                             </div>
