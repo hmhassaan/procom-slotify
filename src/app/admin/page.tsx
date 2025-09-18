@@ -290,7 +290,7 @@ const CategoryManager = () => {
 
 
 const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) => {
-    const { updateUser, teams, subTeams, canEditUser, isUniversalAdmin, isExecutiveAdmin, currentUserProfile } = useAppContext();
+    const { updateUser, teams, subTeams, positions, canEditUser, isUniversalAdmin, isExecutiveAdmin, currentUserProfile } = useAppContext();
     const { currentUser } = useAuth();
     const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
@@ -298,6 +298,7 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
     const [selectedTeams, setSelectedTeams] = useState<string[]>(user.teams || []);
     const [selectedTeam, setSelectedTeam] = useState<string>(user.team || '');
     const [selectedSubTeam, setSelectedSubTeam] = useState<string>(user.subTeam || '');
+    const [selectedPosition, setSelectedPosition] = useState<string>(user.position || '');
     
     const isEditingSelf = user.id === currentUser?.uid;
 
@@ -307,6 +308,7 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
             setSelectedTeams(user.teams || []);
             setSelectedTeam(user.team || '');
             setSelectedSubTeam(user.subTeam || '');
+            setSelectedPosition(user.position || '');
         }
     }, [user, isOpen]);
     
@@ -320,14 +322,16 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
             role: selectedRole,
             team: selectedTeam || user.team,
             subTeam: selectedSubTeam || user.subTeam,
+            position: selectedPosition || user.position,
             teams: selectedRole === 'executive' ? selectedTeams : [],
         };
         
-        // Don't let non-universal admins change team/subteam for roles higher than them
+        // Don't let non-universal admins change team/subteam/position for roles higher than them
         if (currentUserProfile?.role !== 'universal') {
             if (user.role === 'executive' || user.role === 'team' || user.role === 'universal') {
                  delete updatedUserData.team;
                  delete updatedUserData.subTeam;
+                 delete updatedUserData.position;
             }
         }
 
@@ -408,29 +412,44 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                         </div>
                     )}
                     
-                    <div>
-                        <Label>Member of Team</Label>
-                        <Select value={selectedTeam} onValueChange={setSelectedTeam} disabled={!canEditTarget}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select a team" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {teams.map(t => (
-                                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <Label>Member of Team</Label>
+                            <Select value={selectedTeam} onValueChange={setSelectedTeam} disabled={!canEditTarget}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select a team" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {teams.map(t => (
+                                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        
+                        <div>
+                            <Label>Member of Sub-team</Label>
+                                <Select value={selectedSubTeam} onValueChange={setSelectedSubTeam} disabled={!canEditTarget || !selectedTeam}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select a sub-team" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {availableSubTeamsForTeam.map(st => (
+                                        <SelectItem key={st} value={st}>{st}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
-                    
-                    <div>
-                        <Label>Member of Sub-team</Label>
-                            <Select value={selectedSubTeam} onValueChange={setSelectedSubTeam} disabled={!canEditTarget || !selectedTeam}>
+                     <div>
+                        <Label>Position</Label>
+                        <Select value={selectedPosition} onValueChange={setSelectedPosition} disabled={!canEditTarget}>
                             <SelectTrigger>
-                                <SelectValue placeholder="Select a sub-team" />
+                                <SelectValue placeholder="Select a position" />
                             </SelectTrigger>
                             <SelectContent>
-                                {availableSubTeamsForTeam.map(st => (
-                                    <SelectItem key={st} value={st}>{st}</SelectItem>
+                                {positions.map(p => (
+                                    <SelectItem key={p.id} value={p.name}>{p.name}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
@@ -514,7 +533,7 @@ const getRoleIcon = (role?: UserRole) => {
 };
 
 export default function AdminPage() {
-  const { users, positions, subTeams, setScheduleData, clearAllUsers, loading, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, hasAdminPrivileges } = useAppContext();
+  const { teams, users, positions, subTeams, setScheduleData, clearAllUsers, loading, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, hasAdminPrivileges } = useAppContext();
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -663,7 +682,7 @@ export default function AdminPage() {
 
   const teamViewData = useMemo(() => {
     let teamsToShow: string[] = [];
-    if (isUniversalAdmin) teamsToShow = Object.keys(subTeams);
+    if (isUniversalAdmin) teamsToShow = teams;
     else if (isExecutiveAdmin) teamsToShow = currentUserProfile?.teams || [];
     else if (isTeamAdmin && currentUserProfile?.team) teamsToShow = [currentUserProfile.team];
 
@@ -693,7 +712,7 @@ export default function AdminPage() {
             subTeams: subTeamsWithUsers,
         }
     }).filter(team => team.usersInNoSubTeam.length > 0 || team.subTeams.some(st => st.users.length > 0));
-  }, [users, positions, subTeams, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, currentUserProfile]);
+  }, [users, positions, teams, subTeams, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, currentUserProfile]);
   
 
   const pageLoading = loading || authLoading;
