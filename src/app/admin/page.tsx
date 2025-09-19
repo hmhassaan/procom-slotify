@@ -434,6 +434,7 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                                     <SelectValue placeholder="Select a sub-team" />
                                 </SelectTrigger>
                                 <SelectContent>
+                                    <SelectItem value="">No sub-team</SelectItem>
                                     {availableSubTeamsForTeam.map(st => (
                                         <SelectItem key={st} value={st}>{st}</SelectItem>
                                     ))}
@@ -865,3 +866,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+    
