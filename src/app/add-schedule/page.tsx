@@ -21,6 +21,8 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const NO_SUB_TEAM_VALUE = "__none__";
+
 
 export default function AddSchedulePage() {
   const { allCourses, timeSlots, addUser, loading, teams, positions, subTeams, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin } = useAppContext();
@@ -167,7 +169,7 @@ export default function AddSchedulePage() {
       email: userEmail,
       courses: courses,
       team: userTeam,
-      subTeam: userSubTeam || "",
+      subTeam: userSubTeam === NO_SUB_TEAM_VALUE ? "" : userSubTeam,
       position: userPosition,
       offDays: currentOffDays,
       scheduleVisibleTo: {
@@ -273,7 +275,7 @@ export default function AddSchedulePage() {
                   <SelectValue placeholder="Select sub-team" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No sub-team</SelectItem>
+                  <SelectItem value={NO_SUB_TEAM_VALUE}>No sub-team</SelectItem>
                   {availableSubTeams.map((subTeam) => (
                     <SelectItem key={subTeam} value={subTeam}>{subTeam}</SelectItem>
                   ))}
@@ -403,5 +405,7 @@ export default function AddSchedulePage() {
     </div>
   );
 }
+
+    
 
     

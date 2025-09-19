@@ -41,6 +41,7 @@ import { CSS } from '@dnd-kit/utilities';
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const norm = (s: unknown) => (s ?? "").toString().replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+const NO_SUB_TEAM_VALUE = "__none__";
 
 const SortablePositionItem = ({ position, onRemove, onEdit }: { position: Position; onRemove: (id: string) => void; onEdit: (position: Position) => void; }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: position.id });
@@ -321,7 +322,7 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
         const updatedUserData: Partial<User> = { 
             role: selectedRole,
             team: selectedTeam || user.team,
-            subTeam: selectedSubTeam || user.subTeam,
+            subTeam: selectedSubTeam === NO_SUB_TEAM_VALUE ? "" : (selectedSubTeam || user.subTeam),
             position: selectedPosition || user.position,
             teams: selectedRole === 'executive' ? selectedTeams : [],
         };
@@ -434,7 +435,7 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
                                     <SelectValue placeholder="Select a sub-team" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="">No sub-team</SelectItem>
+                                    <SelectItem value={NO_SUB_TEAM_VALUE}>No sub-team</SelectItem>
                                     {availableSubTeamsForTeam.map(st => (
                                         <SelectItem key={st} value={st}>{st}</SelectItem>
                                     ))}
@@ -866,5 +867,7 @@ export default function AdminPage() {
     </div>
   );
 }
+
+    
 
     
