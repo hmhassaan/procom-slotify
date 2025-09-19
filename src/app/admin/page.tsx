@@ -291,7 +291,7 @@ const CategoryManager = () => {
 
 
 const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) => {
-    const { updateUser, teams, subTeams, positions, canEditUser, isUniversalAdmin, isExecutiveAdmin, currentUserProfile } = useAppContext();
+    const { updateUser, teams, subTeams, positions, canEditUser, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, currentUserProfile } = useAppContext();
     const { currentUser } = useAuth();
     const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
@@ -357,19 +357,28 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
         
         if (isUniversalAdmin) return allRoles;
         if (isExecutiveAdmin) return allRoles.filter(opt => opt.value !== 'universal');
+        if (isTeamAdmin) return allRoles.filter(opt => ['none', 'subTeam'].includes(opt.value));
         
-        // Team admins and below can't change roles
+        // Sub-team admins and below can't change roles
         return allRoles.filter(opt => opt.value === user.role);
     }
     
     const canEditTarget = useMemo(() => canEditUser(user), [user, canEditUser]);
+    
     const canChangeRole = useMemo(() => {
         if (isEditingSelf && !isUniversalAdmin) return false;
         if (!canEditTarget) return false;
         if (isUniversalAdmin) return true;
-        if (isExecutiveAdmin && user.role !== 'universal' && user.role !== 'executive') return true;
+        
+        const roleHierarchy = { 'none': 0, 'subTeam': 1, 'team': 2, 'executive': 3, 'universal': 4 };
+        const adminRoleLevel = roleHierarchy[currentUserProfile?.role || 'none'];
+        const targetRoleLevel = roleHierarchy[user.role || 'none'];
+
+        if (isExecutiveAdmin) return adminRoleLevel > targetRoleLevel && user.role !== 'universal';
+        if (isTeamAdmin) return adminRoleLevel > targetRoleLevel;
+
         return false;
-    }, [canEditTarget, isUniversalAdmin, isExecutiveAdmin, user.role, isEditingSelf]);
+    }, [canEditTarget, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, user.role, isEditingSelf, currentUserProfile]);
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -867,7 +876,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
-    
-
-    
