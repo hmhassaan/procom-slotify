@@ -273,6 +273,7 @@ export default function AddSchedulePage() {
                   <SelectValue placeholder="Select sub-team" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="">No sub-team</SelectItem>
                   {availableSubTeams.map((subTeam) => (
                     <SelectItem key={subTeam} value={subTeam}>{subTeam}</SelectItem>
                   ))}
@@ -402,3 +403,5 @@ export default function AddSchedulePage() {
     </div>
   );
 }
+
+    
