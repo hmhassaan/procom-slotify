@@ -11,18 +11,6 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import * as webpush from 'web-push';
 import {getFirestore} from 'firebase-admin/firestore';
-import type { Notification } from '@/app/types';
-
-// Configure web-push with VAPID details
-if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY && process.env.VAPID_MAILTO) {
-  webpush.setVapidDetails(
-    process.env.VAPID_MAILTO,
-    process.env.VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  );
-} else {
-  console.warn("VAPID keys not configured. Push notifications will not work.");
-}
 
 const NotificationPayloadSchema = z.object({
   userId: z.string().describe('The ID of the user to notify.'),
@@ -43,6 +31,18 @@ const notifyUserFlow = ai.defineFlow(
     outputSchema: z.void(),
   },
   async (payload) => {
+    // Configure web-push with VAPID details inside the flow
+    if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY && process.env.VAPID_MAILTO) {
+        webpush.setVapidDetails(
+            `mailto:${process.env.VAPID_MAILTO}`,
+            process.env.VAPID_PUBLIC_KEY,
+            process.env.VAPID_PRIVATE_KEY
+        );
+    } else {
+        console.warn("VAPID keys not configured. Push notifications will not work.");
+        return; // Exit if not configured
+    }
+
     const firestore = getFirestore();
     const userDocRef = firestore.collection('users').doc(payload.userId);
     const userDoc = await userDocRef.get();
