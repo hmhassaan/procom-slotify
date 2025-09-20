@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { LogOut, Home, CalendarPlus, CalendarCheck, Shield, Menu, Bell, Info } from "lucide-react";
+import { LogOut, Home, CalendarPlus, CalendarCheck, Shield, Menu, Bell, Info, BellRing } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 import {
@@ -28,7 +28,7 @@ import { formatDistanceToNow } from 'date-fns';
 
 export default function Navbar() {
   const { currentUser, signOut: firebaseSignOut } = useAuth();
-  const { hasAdminPrivileges, notifications, markNotificationsAsRead } = useAppContext();
+  const { hasAdminPrivileges, notifications, markNotificationsAsRead, requestPushSubscription, isPushSubscribed } = useAppContext();
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -99,8 +99,13 @@ export default function Navbar() {
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-80 p-0">
-                 <div className="p-4 border-b">
+                 <div className="p-4 border-b flex justify-between items-center">
                    <h4 className="font-medium text-sm">Notifications</h4>
+                   {!isPushSubscribed && (
+                     <Button size="sm" variant="ghost" onClick={requestPushSubscription} className="gap-2">
+                       <BellRing /> Enable Push
+                     </Button>
+                   )}
                  </div>
                  <ScrollArea className="h-[300px]">
                     {notifications.length > 0 ? (

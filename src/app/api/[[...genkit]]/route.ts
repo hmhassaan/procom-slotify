@@ -1,6 +1,9 @@
-import {genkit, firebase} from 'genkit';
+
+import {genkit} from 'genkit';
 import {googleAI} from '@genkit-ai/googleai';
-import {firebaseAuth} from 'genkit/firebase';
+import {firebase, firebaseAuth} from 'genkit/firebase';
+import {defineFlow, startFlowsServer} from 'genkit/server';
+import {z} from 'zod';
 import {prod} from 'genkit/environments';
 
 // This must be defined before the ai() call.
@@ -13,7 +16,7 @@ const firebaseConfig = {
   messagingSenderId: "471147543731",
 };
 
-export const ai = genkit({
+genkit({
   plugins: [
     googleAI(),
     firebase({
@@ -23,5 +26,9 @@ export const ai = genkit({
     }),
     firebaseAuth(),
   ],
-  model: 'googleai/gemini-2.5-flash',
+  logLevel: 'debug',
+  enableTracingAndMetrics: true,
 });
+
+export const GET = startFlowsServer();
+export const POST = startFlowsServer();

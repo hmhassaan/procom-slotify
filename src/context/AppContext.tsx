@@ -2,12 +2,13 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
-import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, getDoc, updateDoc, query, where, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, getDoc, updateDoc, query, where, addDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User, CategoryData, UserRole, Position, Notification } from '@/app/types';
 import { useAuth } from './AuthContext';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
-export type { User, CategoryData, UserRole, Position };
+export type { User, CategoryData, UserRole, Position, Notification };
 export type SlotCoursesIndex = Record<string, Record<string, string[]>>;
 export type Schedule = { [day: string]: { [time: string]: string | undefined }; };
 
@@ -36,6 +37,8 @@ interface AppContextType extends AppState {
   setScheduleData: (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => Promise<void>;
   updateCategories: (categories: CategoryData) => Promise<void>;
   markNotificationsAsRead: () => Promise<void>;
+  requestPushSubscription: () => Promise<void>;
+  isPushSubscribed: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -49,6 +52,7 @@ const roleToLabel = (role: UserRole): string => {
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { currentUser, isAdminBypass, loading: authLoading } = useAuth();
+  const { isSubscribed: isPushSubscribed, requestSubscription: requestPushSubscription } = usePushNotifications();
 
   const [state, setState] = useState<Omit<AppState, 'currentUserProfile' | 'isUniversalAdmin' | 'isExecutiveAdmin' | 'isTeamAdmin' | 'isSubTeamAdmin' | 'hasAdminPrivileges'>>({
     users: [],
@@ -127,15 +131,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   
   const addNotification = useCallback(async (userId: string, title: string, message: string, link?: string) => {
     const notificationsCollection = collection(db, 'notifications');
-    await addDoc(notificationsCollection, {
+    const newNotification = {
       userId,
       title,
       message,
       link: link || '/add-schedule', // Default link
       isRead: false,
       createdAt: Date.now(),
-    });
-  }, []);
+    };
+    await addDoc(notificationsCollection, newNotification);
+
+    // Also add to local state immediately if it's for the current user
+    if (userId === currentUser?.uid) {
+        setState(prevState => ({
+            ...prevState,
+            notifications: [{ ...newNotification, id: 'temp-' + Date.now() }, ...prevState.notifications].sort((a,b) => b.createdAt - a.createdAt),
+        }));
+    }
+  }, [currentUser]);
 
   const markNotificationsAsRead = useCallback(async () => {
     if (!currentUser) return;
@@ -144,10 +157,20 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const batch = writeBatch(db);
     unreadNotifications.forEach(n => {
-        const notifRef = doc(db, 'notifications', n.id);
-        batch.update(notifRef, { isRead: true });
+        // Don't try to update temp notifications
+        if (!n.id.startsWith('temp-')) {
+            const notifRef = doc(db, 'notifications', n.id);
+            batch.update(notifRef, { isRead: true });
+        }
     });
     await batch.commit();
+
+    // Also update local state
+     setState(prevState => ({
+        ...prevState,
+        notifications: prevState.notifications.map(n => ({ ...n, isRead: true })),
+    }));
+
   }, [currentUser, state.notifications]);
 
   const setScheduleData = useCallback(async (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => {
@@ -357,6 +380,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setScheduleData,
       updateCategories,
       markNotificationsAsRead,
+      requestPushSubscription,
+      isPushSubscribed,
   };
 
   return (
