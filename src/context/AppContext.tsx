@@ -275,14 +275,13 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (currentUser?.uid) {
         const q = query(
             collection(db, "notifications"), 
-            where("userId", "==", currentUser.uid),
-            orderBy("createdAt", "desc")
+            where("userId", "==", currentUser.uid)
         );
         unsubs.push(onSnapshot(q, (querySnapshot) => {
             const notificationsData = querySnapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
-            } as Notification));
+            } as Notification)).sort((a, b) => b.createdAt - a.createdAt); // Sort client-side
             setState(prevState => ({ ...prevState, notifications: notificationsData }));
         }));
     } else {
