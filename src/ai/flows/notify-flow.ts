@@ -5,6 +5,7 @@
  *
  * - notifyUser - A function that sends a push notification.
  * - NotificationPayload - The input type for the notifyUser function.
+ * - getVapidPublicKey - A function that returns the VAPID public key.
  */
 
 import { ai } from '@/ai/genkit';
@@ -78,5 +79,20 @@ const notifyUserFlow = ai.defineFlow(
         await userDocRef.update({ pushSubscription: null });
       }
     }
+  }
+);
+
+
+export const getVapidPublicKey = ai.defineFlow(
+  {
+    name: 'getVapidPublicKey',
+    inputSchema: z.void(),
+    outputSchema: z.string(),
+  },
+  async () => {
+    if (!process.env.VAPID_PUBLIC_KEY) {
+      throw new Error('VAPID_PUBLIC_KEY is not defined on the server.');
+    }
+    return process.env.VAPID_PUBLIC_KEY;
   }
 );

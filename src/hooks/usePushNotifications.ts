@@ -19,6 +19,16 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+async function getVapidKey(): Promise<string> {
+    const response = await fetch('/api/getVapidPublicKey');
+    if (!response.ok) {
+        throw new Error('Failed to fetch VAPID public key.');
+    }
+    const data = await response.json();
+    return data.result;
+}
+
+
 export function usePushNotifications() {
   const { currentUser } = useAuth();
   const { toast } = useToast();
@@ -27,8 +37,8 @@ export function usePushNotifications() {
   const [error, setError] = useState<Error | null>(null);
 
   const subscribe = useCallback(async () => {
-    if (!currentUser || !process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
-        console.error("VAPID public key or user not available.");
+    if (!currentUser) {
+        console.error("User not available.");
         return;
     }
 
@@ -38,12 +48,17 @@ export function usePushNotifications() {
     }
 
     try {
+        const vapidPublicKey = await getVapidKey();
+        if (!vapidPublicKey) {
+            throw new Error("VAPID public key could not be retrieved.");
+        }
+
         const registration = await navigator.serviceWorker.ready;
         let sub = await registration.pushManager.getSubscription();
 
         if (sub === null) {
             console.log("No existing subscription found, creating new one.");
-            const applicationServerKey = urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
+            const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
             sub = await registration.pushManager.subscribe({
                 userVisibleOnly: true,
                 applicationServerKey,
