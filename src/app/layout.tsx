@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { AppProvider } from '@/context/AppContext';
@@ -10,7 +10,6 @@ export const metadata: Metadata = {
   description: 'Scheduling application for PROCOM',
   applicationName: 'PROCOM Slotify',
   manifest: '/manifest.json',
-  themeColor: '#2563eb',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -36,6 +35,11 @@ export const metadata: Metadata = {
     ],
   },
 };
+
+export const viewport: Viewport = {
+  themeColor: '#2563eb',
+};
+
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
