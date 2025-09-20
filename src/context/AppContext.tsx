@@ -38,6 +38,7 @@ interface AppContextType extends AppState {
   updateCategories: (categories: CategoryData) => Promise<void>;
   markNotificationsAsRead: () => Promise<void>;
   requestPushSubscription: () => Promise<void>;
+  disablePushNotifications: () => Promise<void>;
   isPushSubscribed: boolean;
 }
 
@@ -52,7 +53,7 @@ const roleToLabel = (role: UserRole): string => {
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { currentUser, isAdminBypass, loading: authLoading } = useAuth();
-  const { isSubscribed: isPushSubscribed, requestSubscription: requestPushSubscription } = usePushNotifications();
+  const { isSubscribed: isPushSubscribed, requestSubscription: requestPushSubscription, unsubscribe: disablePushNotifications } = usePushNotifications();
 
   const [state, setState] = useState<Omit<AppState, 'currentUserProfile' | 'isUniversalAdmin' | 'isExecutiveAdmin' | 'isTeamAdmin' | 'isSubTeamAdmin' | 'hasAdminPrivileges'>>({
     users: [],
@@ -381,6 +382,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       updateCategories,
       markNotificationsAsRead,
       requestPushSubscription,
+      disablePushNotifications,
       isPushSubscribed,
   };
 

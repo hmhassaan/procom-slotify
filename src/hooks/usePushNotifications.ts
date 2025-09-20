@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from './use-toast';
 
@@ -81,6 +81,48 @@ export function usePushNotifications() {
     }
   }, [currentUser, toast]);
 
+  const unsubscribe = useCallback(async () => {
+    if (!currentUser) return;
+     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.warn("Push notifications are not supported by this browser.");
+        return;
+    }
+
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        const sub = await registration.pushManager.getSubscription();
+        
+        if (sub) {
+            await sub.unsubscribe();
+            console.log("User unsubscribed.");
+        }
+
+        // Remove subscription from Firestore
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+            const { pushSubscription, ...rest } = userDoc.data();
+            await updateDoc(userDocRef, { ...rest, pushSubscription: null });
+        }
+
+
+        setIsSubscribed(false);
+        setSubscription(null);
+        toast({
+            title: "Notifications Disabled",
+            description: "You will no longer receive push notifications.",
+        });
+
+    } catch (e: any) {
+        console.error("Failed to unsubscribe user: ", e);
+        toast({
+            variant: "destructive",
+            title: "Unsubscription Failed",
+            description: "Could not disable push notifications.",
+        });
+    }
+  }, [currentUser, toast]);
+
 
   useEffect(() => {
     async function checkSubscription() {
@@ -89,8 +131,20 @@ export function usePushNotifications() {
             const registration = await navigator.serviceWorker.ready;
             const sub = await registration.pushManager.getSubscription();
             if (sub) {
-                setIsSubscribed(true);
-                setSubscription(sub);
+                // Also verify against Firestore
+                const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+                if (userDoc.exists() && userDoc.data().pushSubscription) {
+                    setIsSubscribed(true);
+                    setSubscription(sub);
+                } else {
+                    // Mismatch, so unsubscribe from push service
+                    await sub.unsubscribe();
+                    setIsSubscribed(false);
+                    setSubscription(null);
+                }
+            } else {
+                 setIsSubscribed(false);
+                 setSubscription(null);
             }
         } catch (e) {
             console.error("Error checking for push subscription:", e);
@@ -115,5 +169,5 @@ export function usePushNotifications() {
     }
   };
 
-  return { isSubscribed, requestSubscription, error };
+  return { isSubscribed, requestSubscription, unsubscribe, error };
 }
