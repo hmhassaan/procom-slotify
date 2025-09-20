@@ -1,7 +1,7 @@
 
 import {genkit} from 'genkit';
 import {googleAI} from '@genkit-ai/googleai';
-import {firebase, firebaseAuth} from '@genkit-ai/firebase';
+import {firebase} from '@genkit-ai/firebase';
 
 
 // This must be defined before the ai() call.
@@ -18,7 +18,6 @@ export const ai = genkit({
   plugins: [
     googleAI(),
     firebase(),
-    firebaseAuth(),
   ],
   model: 'googleai/gemini-2.5-flash',
 });
