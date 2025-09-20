@@ -1,9 +1,10 @@
+
 "use client";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { LogOut, Home, CalendarPlus, CalendarCheck, Shield, Menu } from "lucide-react";
+import { LogOut, Home, CalendarPlus, CalendarCheck, Shield, Menu, Bell, Info } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 import {
@@ -17,10 +18,17 @@ import { useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { useAppContext } from "@/context/AppContext";
 import { Logo } from "./Logo";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ScrollArea } from "./ui/scroll-area";
+import { formatDistanceToNow } from 'date-fns';
 
 export default function Navbar() {
   const { currentUser, signOut: firebaseSignOut } = useAuth();
-  const { hasAdminPrivileges } = useAppContext();
+  const { hasAdminPrivileges, notifications, markNotificationsAsRead } = useAppContext();
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -43,6 +51,8 @@ export default function Navbar() {
   if (hasAdminPrivileges) {
     navItems.push({ href: "/admin", label: "Admin", icon: Shield });
   }
+  
+  const hasUnreadNotifications = notifications.some(n => !n.isRead);
 
   const NavLink = ({ href, children }: { href: string; children: React.ReactNode }) => (
     <Link
@@ -58,7 +68,7 @@ export default function Navbar() {
   );
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur-sm">
+    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur-sm">
       <div className="container flex h-14 items-center">
         <div className="mr-4 flex items-center">
           <Link href="/" className="mr-6 flex items-center space-x-2">
@@ -76,6 +86,43 @@ export default function Navbar() {
         
         {/* Desktop Nav Actions */}
         <div className="hidden flex-1 items-center justify-end space-x-4 md:flex">
+            <Popover onOpenChange={(open) => open && markNotificationsAsRead()}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative">
+                  <Bell className="h-5 w-5" />
+                  {hasUnreadNotifications && (
+                    <span className="absolute top-1 right-1 flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-0">
+                 <div className="p-4 border-b">
+                   <h4 className="font-medium text-sm">Notifications</h4>
+                 </div>
+                 <ScrollArea className="h-[300px]">
+                    {notifications.length > 0 ? (
+                        notifications.map(n => (
+                           <div key={n.id} className="p-4 border-b text-sm">
+                             <p className="font-semibold">{n.title}</p>
+                             <p className="text-muted-foreground mt-1">{n.message}</p>
+                              <p className="text-xs text-muted-foreground/80 mt-2">
+                                {formatDistanceToNow(n.createdAt, { addSuffix: true })}
+                              </p>
+                           </div>
+                        ))
+                    ) : (
+                        <div className="text-center text-sm text-muted-foreground p-10">
+                          <Info className="mx-auto h-6 w-6 mb-2" />
+                          You have no notifications.
+                        </div>
+                    )}
+                 </ScrollArea>
+              </PopoverContent>
+            </Popover>
+
             <span className="text-sm text-muted-foreground">
               {currentUser.displayName}
             </span>

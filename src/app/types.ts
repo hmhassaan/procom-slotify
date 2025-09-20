@@ -42,3 +42,13 @@ export type CategoryData = {
   positions: Position[];
   subTeams: Record<string, string[]>;
 };
+
+export type Notification = {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  link?: string;
+  isRead: boolean;
+  createdAt: number;
+};

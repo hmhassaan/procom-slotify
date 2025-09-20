@@ -2,9 +2,9 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
-import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, getDoc, updateDoc, query, where, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { User, CategoryData, UserRole, Position } from '@/app/types';
+import type { User, CategoryData, UserRole, Position, Notification } from '@/app/types';
 import { useAuth } from './AuthContext';
 
 export type { User, CategoryData, UserRole, Position };
@@ -16,6 +16,7 @@ interface AppState extends CategoryData {
   allCourses: string[];
   timeSlots: string[];
   slotCourses: SlotCoursesIndex;
+  notifications: Notification[];
   loading: boolean;
   currentUserProfile: User | null;
   isUniversalAdmin: boolean;
@@ -34,9 +35,17 @@ interface AppContextType extends AppState {
   clearAllUsers: () => Promise<void>;
   setScheduleData: (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => Promise<void>;
   updateCategories: (categories: CategoryData) => Promise<void>;
+  markNotificationsAsRead: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const roleToLabel = (role: UserRole): string => {
+  if (role === 'subTeam') return 'Sub-team Admin';
+  if (role === 'none') return 'No Role';
+  return `${capitalize(role)} Admin`;
+}
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const { currentUser, isAdminBypass, loading: authLoading } = useAuth();
@@ -49,6 +58,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     teams: [],
     positions: [],
     subTeams: {},
+    notifications: [],
     loading: true,
   });
 
@@ -115,6 +125,30 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     return canEditUser(userToDelete);
   };
   
+  const addNotification = useCallback(async (userId: string, title: string, message: string, link?: string) => {
+    const notificationsCollection = collection(db, 'notifications');
+    await addDoc(notificationsCollection, {
+      userId,
+      title,
+      message,
+      link: link || '/add-schedule', // Default link
+      isRead: false,
+      createdAt: Date.now(),
+    });
+  }, []);
+
+  const markNotificationsAsRead = useCallback(async () => {
+    if (!currentUser) return;
+    const unreadNotifications = state.notifications.filter(n => !n.isRead);
+    if (unreadNotifications.length === 0) return;
+
+    const batch = writeBatch(db);
+    unreadNotifications.forEach(n => {
+        const notifRef = doc(db, 'notifications', n.id);
+        batch.update(notifRef, { isRead: true });
+    });
+    await batch.commit();
+  }, [currentUser, state.notifications]);
 
   const setScheduleData = useCallback(async (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => {
     const { slotCourses, allCourses, timeSlots } = data;
@@ -141,31 +175,60 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const updateUser = useCallback(async (userId: string, data: Partial<User>) => {
-    const userDoc = doc(db, 'users', userId);
+    const userDocRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userDocRef);
+    if (!userDoc.exists() || !currentUserProfile) return;
+
+    const originalUserData = userDoc.data() as User;
+    const originalRole = originalUserData.role || 'none';
+    const newRole = data.role || originalRole;
+
     // Firestore does not accept undefined, so we need to clean the object
     const cleanedData = Object.fromEntries(
       Object.entries(data).filter(([, value]) => value !== undefined)
     );
-    await updateDoc(userDoc, cleanedData);
-  }, []);
+    await updateDoc(userDocRef, cleanedData);
+    
+    // If role has changed, send a notification
+    if (newRole !== originalRole) {
+      let message = `Your role has been set to ${roleToLabel(newRole)}.`;
+      if (newRole === 'executive' && data.teams && data.teams.length > 0) {
+        message += ` You can now manage the following teams: ${data.teams.join(', ')}.`;
+      } else if (newRole === 'team') {
+        message += ` You can now manage the ${originalUserData.team || data.team} team.`
+      } else if (newRole === 'subTeam') {
+        message += ` You can now manage the ${originalUserData.subTeam || data.subTeam} sub-team.`
+      } else if (newRole === 'none') {
+        message = 'Your administrative privileges have been removed.'
+      }
+
+      await addNotification(
+        userId, 
+        "Your Role Has Been Updated",
+        `Updated by ${currentUserProfile.name}. ${message}`
+      );
+    }
+
+  }, [currentUserProfile, addNotification]);
 
 
   useEffect(() => {
+    let unsubs: (() => void)[] = [];
     setState(prevState => ({ ...prevState, loading: true }));
     
-    const usersUnsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
+    unsubs.push(onSnapshot(collection(db, 'users'), (snapshot) => {
         const usersData = snapshot.docs.map(doc => {
             const data = doc.data();
-            // Add createdAt if it's missing for older users
             return {
                 ...data,
+                id: doc.id,
                 createdAt: data.createdAt || 0,
             } as User;
         }).sort((a, b) => b.createdAt - a.createdAt); // Sort by most recent
-        setState(prevState => ({ ...prevState, users: usersData, loading: prevState.loading && false }));
-    });
+        setState(prevState => ({ ...prevState, users: usersData }));
+    }));
 
-    const scheduleUnsubscribe = onSnapshot(doc(db, 'schedule', 'main'), (doc) => {
+    unsubs.push(onSnapshot(doc(db, 'schedule', 'main'), (doc) => {
         if (doc.exists()) {
             const data = doc.data();
             setState(prevState => ({
@@ -177,9 +240,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         } else {
             setState(prevState => ({ ...prevState, allCourses: [], timeSlots: [], slotCourses: {} }));
         }
-    });
+    }));
     
-    const categoriesUnsubscribe = onSnapshot(doc(db, 'schedule', 'categories'), (docSnap) => {
+    unsubs.push(onSnapshot(doc(db, 'schedule', 'categories'), (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data() as any;
             
@@ -192,7 +255,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
                     icon: ''
                 }));
                 
-                // Update Firestore in the background
                 const categoryDoc = doc(db, 'schedule', 'categories');
                 updateDoc(categoryDoc, { positions: migratedPositions });
 
@@ -208,19 +270,38 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         } else {
             setState(prevState => ({ ...prevState, teams: [], positions: [], subTeams: {} }));
         }
-    });
+    }));
+    
+    if (currentUser?.uid) {
+        const q = query(
+            collection(db, "notifications"), 
+            where("userId", "==", currentUser.uid),
+            orderBy("createdAt", "desc")
+        );
+        unsubs.push(onSnapshot(q, (querySnapshot) => {
+            const notificationsData = querySnapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            } as Notification));
+            setState(prevState => ({ ...prevState, notifications: notificationsData }));
+        }));
+    } else {
+        setState(prevState => ({ ...prevState, notifications: [] }));
+    }
 
-    // Initial load check
-    Promise.all([getDoc(doc(db, 'schedule', 'main')), getDoc(doc(db, 'schedule', 'categories'))]).finally(() => {
+
+    Promise.all([
+        getDocs(collection(db, 'users')), 
+        getDoc(doc(db, 'schedule', 'main')), 
+        getDoc(doc(db, 'schedule', 'categories'))
+    ]).finally(() => {
         setState(prevState => ({ ...prevState, loading: false }));
     });
 
     return () => {
-      usersUnsubscribe();
-      scheduleUnsubscribe();
-      categoriesUnsubscribe();
+      unsubs.forEach(unsub => unsub());
     };
-  }, []);
+  }, [currentUser]);
 
   const addUser = async (user: User) => {
     try {
@@ -276,6 +357,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       clearAllUsers,
       setScheduleData,
       updateCategories,
+      markNotificationsAsRead,
   };
 
   return (

@@ -360,13 +360,13 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
         if (isTeamAdmin) return allRoles.filter(opt => ['none', 'subTeam'].includes(opt.value));
         
         // Sub-team admins and below can't change roles
-        return allRoles.filter(opt => opt.value === user.role);
+        return [];
     }
     
     const canEditTarget = useMemo(() => canEditUser(user), [user, canEditUser]);
     
     const canChangeRole = useMemo(() => {
-        if (isEditingSelf && !isUniversalAdmin) return false;
+        if (isEditingSelf) return false; // Cannot change own role
         if (!canEditTarget) return false;
         if (isUniversalAdmin) return true;
         
@@ -375,7 +375,7 @@ const RoleDialog = ({ user, onUpdate }: { user: User, onUpdate: () => void }) =>
         const targetRoleLevel = roleHierarchy[user.role || 'none'];
 
         if (isExecutiveAdmin) return adminRoleLevel > targetRoleLevel && user.role !== 'universal';
-        if (isTeamAdmin) return adminRoleLevel > targetRoleLevel;
+        if (isTeamAdmin) return adminRoleLevel > targetRoleLevel; // Can change 'none' and 'subTeam'
 
         return false;
     }, [canEditTarget, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, user.role, isEditingSelf, currentUserProfile]);
