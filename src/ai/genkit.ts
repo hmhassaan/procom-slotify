@@ -1,6 +1,6 @@
-import {genkit, firebase} from 'genkit';
+import {genkit} from 'genkit';
 import {googleAI} from '@genkit-ai/googleai';
-import {firebaseAuth} from 'genkit/firebase';
+import {firebase, firebaseAuth} from '@genkit-ai/firebase';
 import {prod} from 'genkit/environments';
 
 // This must be defined before the ai() call.

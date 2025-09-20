@@ -1,5 +1,5 @@
 
-import { onDocumentCreated } from 'genkit/firebase';
+import { onDocumentCreated } from '@genkit-ai/firebase/functions';
 import { notifyUser } from './flows/notify-flow';
 import type { Notification } from '@/app/types';
 
