@@ -67,6 +67,50 @@ export default function Navbar() {
     </Link>
   );
 
+  const NotificationBell = () => (
+     <Popover onOpenChange={(open) => open && markNotificationsAsRead()}>
+        <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon" className="relative">
+            <Bell className="h-5 w-5" />
+            {hasUnreadNotifications && (
+            <span className="absolute top-1 right-1 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+            </span>
+            )}
+        </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-80 p-0">
+            <div className="p-4 border-b flex justify-between items-center">
+            <h4 className="font-medium text-sm">Notifications</h4>
+            {!isPushSubscribed && (
+                <Button size="sm" variant="ghost" onClick={requestPushSubscription} className="gap-2">
+                <BellRing /> Enable Push
+                </Button>
+            )}
+            </div>
+            <ScrollArea className="h-[300px]">
+                {notifications.length > 0 ? (
+                    notifications.map(n => (
+                        <div key={n.id} className="p-4 border-b text-sm">
+                        <p className="font-semibold">{n.title}</p>
+                        <p className="text-muted-foreground mt-1">{n.message}</p>
+                        <p className="text-xs text-muted-foreground/80 mt-2">
+                            {formatDistanceToNow(n.createdAt, { addSuffix: true })}
+                        </p>
+                        </div>
+                    ))
+                ) : (
+                    <div className="text-center text-sm text-muted-foreground p-10">
+                    <Info className="mx-auto h-6 w-6 mb-2" />
+                    You have no notifications.
+                    </div>
+                )}
+            </ScrollArea>
+        </PopoverContent>
+    </Popover>
+  );
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur-sm">
       <div className="container flex h-14 items-center">
@@ -86,48 +130,7 @@ export default function Navbar() {
         
         {/* Desktop Nav Actions */}
         <div className="hidden flex-1 items-center justify-end space-x-4 md:flex">
-            <Popover onOpenChange={(open) => open && markNotificationsAsRead()}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5" />
-                  {hasUnreadNotifications && (
-                    <span className="absolute top-1 right-1 flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                    </span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-0">
-                 <div className="p-4 border-b flex justify-between items-center">
-                   <h4 className="font-medium text-sm">Notifications</h4>
-                   {!isPushSubscribed && (
-                     <Button size="sm" variant="ghost" onClick={requestPushSubscription} className="gap-2">
-                       <BellRing /> Enable Push
-                     </Button>
-                   )}
-                 </div>
-                 <ScrollArea className="h-[300px]">
-                    {notifications.length > 0 ? (
-                        notifications.map(n => (
-                           <div key={n.id} className="p-4 border-b text-sm">
-                             <p className="font-semibold">{n.title}</p>
-                             <p className="text-muted-foreground mt-1">{n.message}</p>
-                              <p className="text-xs text-muted-foreground/80 mt-2">
-                                {formatDistanceToNow(n.createdAt, { addSuffix: true })}
-                              </p>
-                           </div>
-                        ))
-                    ) : (
-                        <div className="text-center text-sm text-muted-foreground p-10">
-                          <Info className="mx-auto h-6 w-6 mb-2" />
-                          You have no notifications.
-                        </div>
-                    )}
-                 </ScrollArea>
-              </PopoverContent>
-            </Popover>
-
+            <NotificationBell />
             <span className="text-sm text-muted-foreground">
               {currentUser.displayName}
             </span>
@@ -137,7 +140,8 @@ export default function Navbar() {
         </div>
 
         {/* Mobile Nav Trigger */}
-        <div className="flex flex-1 justify-end md:hidden">
+        <div className="flex flex-1 justify-end items-center gap-2 md:hidden">
+            <NotificationBell />
             <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
                 <SheetTrigger asChild>
                     <Button variant="ghost" size="icon">
