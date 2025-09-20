@@ -1,4 +1,5 @@
 
+/*
 import { onDocumentCreated } from '@genkit-ai/firebase/functions';
 import { notifyUser } from './flows/notify-flow';
 import type { Notification } from '@/app/types';
@@ -20,3 +21,4 @@ export const onNotificationCreated = onDocumentCreated(
     });
   }
 );
+*/
