@@ -2,6 +2,10 @@ import {genkit} from 'genkit';
 import {googleAI} from '@genkit-ai/googleai';
 import {firebase, firebaseAuth} from '@genkit-ai/firebase';
 import {prod} from 'genkit/environments';
+import * as dotenv from 'dotenv';
+
+dotenv.config();
+
 
 // This must be defined before the ai() call.
 const firebaseConfig = {
