@@ -20,7 +20,7 @@ function urlBase64ToUint8Array(base64String: string) {
 }
 
 async function getVapidKey(): Promise<string> {
-    const response = await fetch('/api/getVapidPublicKey');
+    const response = await fetch('/api/getVapidPublicKey', { method: 'POST' });
     if (!response.ok) {
         throw new Error('Failed to fetch VAPID public key.');
     }
