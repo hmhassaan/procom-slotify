@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from './use-toast';
 
@@ -97,13 +97,11 @@ export function usePushNotifications() {
             console.log("User unsubscribed.");
         }
 
-        // Remove subscription from Firestore
+        // Remove subscription from Firestore by setting it to null
         const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-            const { pushSubscription, ...rest } = userDoc.data();
-            await updateDoc(userDocRef, { ...rest, pushSubscription: null });
-        }
+        await updateDoc(userDocRef, {
+            pushSubscription: null,
+        });
 
 
         setIsSubscribed(false);
