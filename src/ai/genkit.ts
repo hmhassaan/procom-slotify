@@ -1,7 +1,6 @@
 import {genkit} from 'genkit';
 import {googleAI} from '@genkit-ai/googleai';
 import {firebase, firebaseAuth} from '@genkit-ai/firebase';
-import {prod} from 'genkit/environments';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -23,7 +22,7 @@ export const ai = genkit({
     firebase({
       firebaseConfig,
       // The service account is automatically detected in prod.
-      serviceAccount: prod ? undefined : JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS!),
+      // For local dev, it's read from GOOGLE_APPLICATION_CREDENTIALS env var.
     }),
     firebaseAuth(),
   ],
