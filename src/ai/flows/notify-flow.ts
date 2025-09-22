@@ -45,21 +45,14 @@ const notifyUserFlow = ai.defineFlow(
     }
 
     const firestore = getFirestore();
-    const userDocRef = firestore.collection('users').doc(payload.userId);
-    const userDoc = await userDocRef.get();
+    const subscriptionsCollection = firestore.collection('users').doc(payload.userId).collection('subscriptions');
+    const subscriptionsSnapshot = await subscriptionsCollection.get();
 
-    if (!userDoc.exists) {
-      console.error(`User with ID ${payload.userId} not found.`);
+    if (subscriptionsSnapshot.empty) {
+      console.log(`User ${payload.userId} has no push subscriptions.`);
       return;
     }
 
-    const userData = userDoc.data();
-    if (!userData || !userData.pushSubscription) {
-      console.log(`User ${payload.userId} does not have a push subscription.`);
-      return;
-    }
-
-    const subscription = userData.pushSubscription as webpush.PushSubscription;
     const notificationData = JSON.stringify({
       title: payload.title,
       body: payload.message,
@@ -68,17 +61,22 @@ const notifyUserFlow = ai.defineFlow(
       },
     });
 
-    try {
-      await webpush.sendNotification(subscription, notificationData);
-      console.log(`Push notification sent successfully to user ${payload.userId}.`);
-    } catch (error: any) {
-      console.error(`Error sending push notification to user ${payload.userId}:`, error.body);
-      // If the subscription is expired or invalid, remove it from the user's document
-      if (error.statusCode === 404 || error.statusCode === 410) {
-        console.log(`Subscription for user ${payload.userId} is invalid. Removing.`);
-        await userDocRef.update({ pushSubscription: null });
+    const promises = subscriptionsSnapshot.docs.map(async (doc) => {
+      const subscription = doc.data() as webpush.PushSubscription;
+      try {
+        await webpush.sendNotification(subscription, notificationData);
+        console.log(`Push notification sent successfully to subscription ${doc.id} for user ${payload.userId}.`);
+      } catch (error: any) {
+        console.error(`Error sending push notification to subscription ${doc.id} for user ${payload.userId}:`, error.body);
+        // If the subscription is expired or invalid (404 Not Found, 410 Gone), remove it.
+        if (error.statusCode === 404 || error.statusCode === 410) {
+          console.log(`Subscription ${doc.id} for user ${payload.userId} is invalid. Removing.`);
+          await doc.ref.delete();
+        }
       }
-    }
+    });
+
+    await Promise.all(promises);
   }
 );
 

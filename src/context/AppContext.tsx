@@ -344,6 +344,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     try {
       const userDoc = doc(db, 'users', userId);
       await deleteDoc(userDoc);
+      
+      // Also delete their subscriptions subcollection
+      const subscriptionsCollection = collection(db, 'users', userId, 'subscriptions');
+      const subsSnapshot = await getDocs(subscriptionsCollection);
+      const batch = writeBatch(db);
+      subsSnapshot.forEach(subDoc => {
+          batch.delete(subDoc.ref);
+      });
+      await batch.commit();
+
     } catch (error) {
       console.error("Error deleting user:", error);
     }
@@ -354,9 +364,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       const usersCollection = collection(db, 'users');
       const usersSnapshot = await getDocs(usersCollection);
       const batch = writeBatch(db);
-      usersSnapshot.docs.forEach(doc => {
-        batch.delete(doc.ref);
-      });
+      
+      for (const userDoc of usersSnapshot.docs) {
+          batch.delete(userDoc.ref);
+          // Delete subscriptions for each user
+          const subsCollection = collection(db, 'users', userDoc.id, 'subscriptions');
+          const subsSnapshot = await getDocs(subsCollection);
+          subsSnapshot.forEach(subDoc => batch.delete(subDoc.ref));
+      }
+      
       await batch.commit();
     } catch (error) {
       console.error("Error clearing all users:", error);

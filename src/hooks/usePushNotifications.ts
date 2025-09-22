@@ -1,8 +1,9 @@
+
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, deleteDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useToast } from "./use-toast";
 
@@ -49,6 +50,12 @@ export function usePushNotifications() {
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
+  const getSubscriptionId = (sub: PushSubscription) => {
+      // Use the endpoint as a unique identifier for the subscription document
+      const endpointHash = btoa(sub.endpoint).replace(/=/g, '').replace(/\//g, '_').replace(/\+/g, '-');
+      return endpointHash;
+  };
+
   const saveSubscription = useCallback(
     async (sub: PushSubscription) => {
       if (!currentUser) return;
@@ -58,12 +65,9 @@ export function usePushNotifications() {
         endpoint: json.endpoint,
         keys: json.keys ?? {},
       };
-      const userDocRef = doc(db, "users", currentUser.uid);
-      await setDoc(
-        userDocRef,
-        { pushSubscription: minimal, pushEnabledAt: Date.now() },
-        { merge: true }
-      );
+      const subscriptionId = getSubscriptionId(sub);
+      const subDocRef = doc(db, "users", currentUser.uid, "subscriptions", subscriptionId);
+      await setDoc(subDocRef, minimal);
     },
     [currentUser]
   );
@@ -83,7 +87,6 @@ export function usePushNotifications() {
       return;
     }
     try {
-      // Ensure SW is registered elsewhere (e.g., in _app or layout) as: navigator.serviceWorker.register('/sw.js')
       const registration = await navigator.serviceWorker.ready;
 
       const vapidPublicKey = await getVapidKey();
@@ -103,7 +106,7 @@ export function usePushNotifications() {
       setError(null);
       toast({
         title: "Notifications Enabled",
-        description: "You will now receive push notifications.",
+        description: "You will now receive push notifications on this device.",
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -118,28 +121,25 @@ export function usePushNotifications() {
   }, [currentUser, saveSubscription, toast]);
 
   const unsubscribe = useCallback(async () => {
-    if (!currentUser) return;
+    if (!currentUser || !subscription) return;
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
       console.warn("Push notifications are not supported by this browser.");
       return;
     }
     try {
-      const registration = await navigator.serviceWorker.ready;
-      const sub = await registration.pushManager.getSubscription();
-      if (sub) await sub.unsubscribe();
+      // Unsubscribe from the push service
+      await subscription.unsubscribe();
 
-      const userDocRef = doc(db, "users", currentUser.uid);
-      await setDoc(
-        userDocRef,
-        { pushSubscription: null, pushDisabledAt: Date.now() },
-        { merge: true }
-      );
-
+      // Remove the subscription from Firestore
+      const subscriptionId = getSubscriptionId(subscription);
+      const subDocRef = doc(db, "users", currentUser.uid, "subscriptions", subscriptionId);
+      await deleteDoc(subDocRef);
+      
       setIsSubscribed(false);
       setSubscription(null);
       toast({
         title: "Notifications Disabled",
-        description: "You will no longer receive push notifications.",
+        description: "You will no longer receive push notifications on this device.",
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -150,7 +150,7 @@ export function usePushNotifications() {
         description: msg || "Could not disable push notifications.",
       });
     }
-  }, [currentUser, toast]);
+  }, [currentUser, subscription, toast]);
 
   useEffect(() => {
     (async () => {
@@ -165,23 +165,24 @@ export function usePushNotifications() {
           return;
         }
 
-        // Compare with Firestore
-        const snap = await getDoc(doc(db, "users", currentUser.uid));
-        const fsSub = snap.exists() ? (snap.data() as any)?.pushSubscription : null;
+        // Check if this specific subscription exists in Firestore
+        const subscriptionId = getSubscriptionId(sub);
+        const subDocRef = doc(db, "users", currentUser.uid, "subscriptions", subscriptionId);
+        const docSnap = await getDoc(subDocRef);
 
-        // If Firestore is missing or endpoints differ, just overwrite Firestore with the current subscription.
-        const endpoint = sub.endpoint;
-        const fsEndpoint = fsSub?.endpoint;
-
-        if (!fsSub || fsEndpoint !== endpoint) {
-          await saveSubscription(sub);
+        if (docSnap.exists()) {
+           setIsSubscribed(true);
+           setSubscription(sub);
+        } else {
+           // The browser has a subscription, but we don't have it in Firestore.
+           // This can happen if the user cleared site data on the server but not the browser.
+           // Let's sync it.
+           await saveSubscription(sub);
+           setIsSubscribed(true);
+           setSubscription(sub);
         }
-
-        setIsSubscribed(true);
-        setSubscription(sub);
       } catch (e) {
         console.error("Error checking for push subscription:", e);
-        // Don’t force-unsubscribe here; better to keep user subscribed and fix persistence later.
       }
     })();
   }, [currentUser, saveSubscription]);
