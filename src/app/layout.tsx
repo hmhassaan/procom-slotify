@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { AppProvider } from '@/context/AppContext';
 import { AuthProvider } from '@/context/AuthContext';
 import Navbar from '@/components/Navbar';
+import { ServiceWorkerRegistrar } from '@/components/ServiceWorkerRegistrar';
 
 export const metadata: Metadata = {
   title: 'PROCOM Slotify',
@@ -61,6 +62,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </AppProvider>
         </AuthProvider>
         <Toaster />
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );
