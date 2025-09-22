@@ -1,33 +1,46 @@
-
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '@/context/AuthContext';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { useToast } from './use-toast';
+import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { doc, setDoc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useToast } from "./use-toast";
 
-// This function converts the VAPID public key to a Uint8Array
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
   const rawData = window.atob(base64);
   const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
   return outputArray;
 }
 
 async function getVapidKey(): Promise<string> {
-    const response = await fetch('/api/getVapidPublicKey', { method: 'POST' });
-    if (!response.ok) {
-        throw new Error('Failed to fetch VAPID public key.');
-    }
-    const data = await response.json();
-    return data.result;
+  let res: Response;
+  try {
+    res = await fetch("/api/getVapidPublicKey", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+  } catch {
+    throw new Error("Network error while fetching VAPID public key.");
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`VAPID endpoint failed (${res.status}): ${text || "no body"}`);
+  }
+  let data: any;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error("Invalid JSON returned from VAPID endpoint.");
+  }
+  if (!data || typeof data.result !== "string" || !data.result.length) {
+    throw new Error("VAPID public key missing in response.");
+  }
+  return data.result;
 }
-
 
 export function usePushNotifications() {
   const { currentUser } = useAuth();
@@ -36,151 +49,175 @@ export function usePushNotifications() {
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
   const [error, setError] = useState<Error | null>(null);
 
+  const saveSubscription = useCallback(
+    async (sub: PushSubscription) => {
+      if (!currentUser) return;
+      const json = sub.toJSON();
+      // Keep Firestore lean: endpoint + keys are enough server-side
+      const minimal = {
+        endpoint: json.endpoint,
+        keys: json.keys ?? {},
+      };
+      const userDocRef = doc(db, "users", currentUser.uid);
+      await setDoc(
+        userDocRef,
+        { pushSubscription: minimal, pushEnabledAt: Date.now() },
+        { merge: true }
+      );
+    },
+    [currentUser]
+  );
+
   const subscribe = useCallback(async () => {
     if (!currentUser) {
-        console.error("User not available.");
-        return;
+      console.error("User not available.");
+      return;
     }
-
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        console.warn("Push notifications are not supported by this browser.");
-        return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      console.warn("Push notifications are not supported by this browser.");
+      toast({
+        variant: "destructive",
+        title: "Unsupported",
+        description: "Your browser does not support push notifications.",
+      });
+      return;
     }
-
     try {
-        const vapidPublicKey = await getVapidKey();
-        if (!vapidPublicKey) {
-            throw new Error("VAPID public key could not be retrieved.");
-        }
+      // Ensure SW is registered elsewhere (e.g., in _app or layout) as: navigator.serviceWorker.register('/sw.js')
+      const registration = await navigator.serviceWorker.ready;
 
-        const registration = await navigator.serviceWorker.ready;
-        let sub = await registration.pushManager.getSubscription();
+      const vapidPublicKey = await getVapidKey();
+      const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
 
-        if (sub === null) {
-            console.log("No existing subscription found, creating new one.");
-            const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
-            sub = await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey,
-            });
-        } else {
-            console.log("Existing subscription found.");
-        }
-
-        console.log('User is subscribed:', sub);
-        
-        // Convert subscription to a plain object before storing
-        const subscriptionObject = sub.toJSON();
-
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        await updateDoc(userDocRef, {
-            pushSubscription: subscriptionObject,
+      let sub = await registration.pushManager.getSubscription();
+      if (!sub) {
+        sub = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
         });
+      }
 
-        setIsSubscribed(true);
-        setSubscription(sub);
-        setError(null);
-        toast({
-            title: "Notifications Enabled",
-            description: "You will now receive push notifications.",
-        });
-
-    } catch (e: any) {
-        console.error('Failed to subscribe the user: ', e);
-        setError(e);
-        toast({
-            variant: "destructive",
-            title: "Subscription Failed",
-            description: "Could not enable push notifications. Please ensure you have granted permission.",
-        });
+      await saveSubscription(sub);
+      setIsSubscribed(true);
+      setSubscription(sub);
+      setError(null);
+      toast({
+        title: "Notifications Enabled",
+        description: "You will now receive push notifications.",
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("Failed to subscribe the user: ", msg);
+      setError(e as Error);
+      toast({
+        variant: "destructive",
+        title: "Subscription Failed",
+        description: msg || "Could not enable push notifications.",
+      });
     }
-  }, [currentUser, toast]);
+  }, [currentUser, saveSubscription, toast]);
 
   const unsubscribe = useCallback(async () => {
     if (!currentUser) return;
-     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-        console.warn("Push notifications are not supported by this browser.");
-        return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      console.warn("Push notifications are not supported by this browser.");
+      return;
     }
-
     try {
-        const registration = await navigator.serviceWorker.ready;
-        const sub = await registration.pushManager.getSubscription();
-        
-        if (sub) {
-            await sub.unsubscribe();
-            console.log("User unsubscribed.");
-        }
+      const registration = await navigator.serviceWorker.ready;
+      const sub = await registration.pushManager.getSubscription();
+      if (sub) await sub.unsubscribe();
 
-        // Remove subscription from Firestore by setting it to null
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        await updateDoc(userDocRef, {
-            pushSubscription: null,
-        });
+      const userDocRef = doc(db, "users", currentUser.uid);
+      await setDoc(
+        userDocRef,
+        { pushSubscription: null, pushDisabledAt: Date.now() },
+        { merge: true }
+      );
 
-
-        setIsSubscribed(false);
-        setSubscription(null);
-        toast({
-            title: "Notifications Disabled",
-            description: "You will no longer receive push notifications.",
-        });
-
-    } catch (e: any) {
-        console.error("Failed to unsubscribe user: ", e);
-        toast({
-            variant: "destructive",
-            title: "Unsubscription Failed",
-            description: "Could not disable push notifications.",
-        });
+      setIsSubscribed(false);
+      setSubscription(null);
+      toast({
+        title: "Notifications Disabled",
+        description: "You will no longer receive push notifications.",
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("Failed to unsubscribe user: ", msg);
+      toast({
+        variant: "destructive",
+        title: "Unsubscription Failed",
+        description: msg || "Could not disable push notifications.",
+      });
     }
   }, [currentUser, toast]);
 
-
   useEffect(() => {
-    async function checkSubscription() {
-      if ('serviceWorker' in navigator && currentUser) {
-        try {
-            const registration = await navigator.serviceWorker.ready;
-            const sub = await registration.pushManager.getSubscription();
-            if (sub) {
-                // Also verify against Firestore
-                const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-                if (userDoc.exists() && userDoc.data().pushSubscription) {
-                    setIsSubscribed(true);
-                    setSubscription(sub);
-                } else {
-                    // Mismatch, so unsubscribe from push service
-                    await sub.unsubscribe();
-                    setIsSubscribed(false);
-                    setSubscription(null);
-                }
-            } else {
-                 setIsSubscribed(false);
-                 setSubscription(null);
-            }
-        } catch (e) {
-            console.error("Error checking for push subscription:", e);
+    (async () => {
+      if (!("serviceWorker" in navigator) || !currentUser) return;
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const sub = await registration.pushManager.getSubscription();
+
+        if (!sub) {
+          setIsSubscribed(false);
+          setSubscription(null);
+          return;
         }
+
+        // Compare with Firestore
+        const snap = await getDoc(doc(db, "users", currentUser.uid));
+        const fsSub = snap.exists() ? (snap.data() as any)?.pushSubscription : null;
+
+        // If Firestore is missing or endpoints differ, just overwrite Firestore with the current subscription.
+        const endpoint = sub.endpoint;
+        const fsEndpoint = fsSub?.endpoint;
+
+        if (!fsSub || fsEndpoint !== endpoint) {
+          await saveSubscription(sub);
+        }
+
+        setIsSubscribed(true);
+        setSubscription(sub);
+      } catch (e) {
+        console.error("Error checking for push subscription:", e);
+        // Don’t force-unsubscribe here; better to keep user subscribed and fix persistence later.
       }
-    }
-    checkSubscription();
-  }, [currentUser]);
+    })();
+  }, [currentUser, saveSubscription]);
 
-
-  // This function will be called by a UI element (e.g., a button)
   const requestSubscription = async () => {
-    const permission = await window.Notification.requestPermission();
-    if (permission === 'granted') {
+    if (!("Notification" in window)) {
+      toast({
+        variant: "destructive",
+        title: "Unsupported",
+        description: "Notifications API is not available in this environment.",
+      });
+      return;
+    }
+    if (Notification.permission === "granted") {
+      await subscribe();
+      return;
+    }
+    if (Notification.permission === "denied") {
+      toast({
+        variant: "destructive",
+        title: "Permission Denied",
+        description: "Enable notifications in your browser settings to subscribe.",
+      });
+      return;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission === "granted") {
       await subscribe();
     } else {
-       toast({
-            variant: "destructive",
-            title: "Permission Denied",
-            description: "You have denied permission for push notifications.",
-       });
+      toast({
+        variant: "destructive",
+        title: "Permission Denied",
+        description: "You denied permission for push notifications.",
+      });
     }
   };
 
-  return { isSubscribed, requestSubscription, unsubscribe, error };
+  return { isSubscribed, requestSubscription, unsubscribe, error, subscription };
 }
