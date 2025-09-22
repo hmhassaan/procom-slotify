@@ -24,22 +24,31 @@ async function getVapidKey(): Promise<string> {
       headers: { "content-type": "application/json" },
       body: "{}",
     });
-  } catch {
-    throw new Error("Network error while fetching VAPID public key.");
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown network error";
+    console.error("Network error while fetching VAPID public key:", msg);
+    throw new Error(`Network error: ${msg}`);
   }
+
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`VAPID endpoint failed (${res.status}): ${text || "no body"}`);
+    const text = await res.text().catch(() => "Could not read response body");
+    console.error(`VAPID endpoint failed (${res.status}): ${text}`);
+    throw new Error(`Server error (${res.status}) while fetching VAPID key.`);
   }
+
   let data: any;
   try {
     data = await res.json();
   } catch {
-    throw new Error("Invalid JSON returned from VAPID endpoint.");
+    console.error("Invalid JSON returned from VAPID endpoint.");
+    throw new Error("Invalid response from server.");
   }
+
   if (!data || typeof data.result !== "string" || !data.result.length) {
-    throw new Error("VAPID public key missing in response.");
+    console.error("VAPID public key missing in response from server.");
+    throw new Error("VAPID key not found in server response.");
   }
+
   return data.result;
 }
 
@@ -51,7 +60,6 @@ export function usePushNotifications() {
   const [error, setError] = useState<Error | null>(null);
 
   const getSubscriptionId = (sub: PushSubscription) => {
-      // Use the endpoint as a unique identifier for the subscription document
       const endpointHash = btoa(sub.endpoint).replace(/=/g, '').replace(/\//g, '_').replace(/\+/g, '-');
       return endpointHash;
   };
@@ -60,7 +68,6 @@ export function usePushNotifications() {
     async (sub: PushSubscription) => {
       if (!currentUser) return;
       const json = sub.toJSON();
-      // Keep Firestore lean: endpoint + keys are enough server-side
       const minimal = {
         endpoint: json.endpoint,
         keys: json.keys ?? {},
@@ -68,13 +75,14 @@ export function usePushNotifications() {
       const subscriptionId = getSubscriptionId(sub);
       const subDocRef = doc(db, "users", currentUser.uid, "subscriptions", subscriptionId);
       await setDoc(subDocRef, minimal);
+      console.log('Subscription saved to Firestore.');
     },
     [currentUser]
   );
 
   const subscribe = useCallback(async () => {
     if (!currentUser) {
-      console.error("User not available.");
+      console.error("User not available for subscription.");
       return;
     }
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
@@ -88,16 +96,21 @@ export function usePushNotifications() {
     }
     try {
       const registration = await navigator.serviceWorker.ready;
+      console.log("Service worker is ready for push manager.");
 
       const vapidPublicKey = await getVapidKey();
+      console.log("Fetched VAPID public key.");
       const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
 
       let sub = await registration.pushManager.getSubscription();
       if (!sub) {
+        console.log("No existing subscription found, creating new one.");
         sub = await registration.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey,
         });
+      } else {
+        console.log("Existing subscription found.");
       }
 
       await saveSubscription(sub);
@@ -122,18 +135,14 @@ export function usePushNotifications() {
 
   const unsubscribe = useCallback(async () => {
     if (!currentUser || !subscription) return;
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-      console.warn("Push notifications are not supported by this browser.");
-      return;
-    }
     try {
-      // Unsubscribe from the push service
       await subscription.unsubscribe();
+      console.log('Unsubscribed from push service.');
 
-      // Remove the subscription from Firestore
       const subscriptionId = getSubscriptionId(subscription);
       const subDocRef = doc(db, "users", currentUser.uid, "subscriptions", subscriptionId);
       await deleteDoc(subDocRef);
+      console.log('Subscription removed from Firestore.');
       
       setIsSubscribed(false);
       setSubscription(null);
@@ -165,7 +174,6 @@ export function usePushNotifications() {
           return;
         }
 
-        // Check if this specific subscription exists in Firestore
         const subscriptionId = getSubscriptionId(sub);
         const subDocRef = doc(db, "users", currentUser.uid, "subscriptions", subscriptionId);
         const docSnap = await getDoc(subDocRef);
@@ -174,9 +182,6 @@ export function usePushNotifications() {
            setIsSubscribed(true);
            setSubscription(sub);
         } else {
-           // The browser has a subscription, but we don't have it in Firestore.
-           // This can happen if the user cleared site data on the server but not the browser.
-           // Let's sync it.
            await saveSubscription(sub);
            setIsSubscribed(true);
            setSubscription(sub);
@@ -192,11 +197,12 @@ export function usePushNotifications() {
       toast({
         variant: "destructive",
         title: "Unsupported",
-        description: "Notifications API is not available in this environment.",
+        description: "Notifications API is not available in this browser.",
       });
       return;
     }
     if (Notification.permission === "granted") {
+      console.log("Notification permission already granted.");
       await subscribe();
       return;
     }
@@ -208,10 +214,13 @@ export function usePushNotifications() {
       });
       return;
     }
+    console.log("Requesting notification permission...");
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
+      console.log("Notification permission granted.");
       await subscribe();
     } else {
+      console.log("Notification permission denied.");
       toast({
         variant: "destructive",
         title: "Permission Denied",

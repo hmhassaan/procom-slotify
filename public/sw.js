@@ -1,35 +1,47 @@
-// public/sw.js
 
-// Listen for push events
+// Service Worker
+
+self.addEventListener('install', (event) => {
+  console.log('Service Worker: Installing...');
+  // Cache assets here if needed
+  event.waitUntil(self.skipWaiting()); // Activate worker immediately
+});
+
+self.addEventListener('activate', (event) => {
+  console.log('Service Worker: Activating...');
+  event.waitUntil(self.clients.claim()); // Become available to all pages
+});
+
 self.addEventListener('push', (event) => {
-  if (!event.data) {
-    console.error("Push event but no data");
-    return;
-  }
-  
-  let data = {};
+  console.log('Service Worker: Push Received.');
+  let data;
   try {
     data = event.data.json();
   } catch (e) {
-    console.error("Error parsing push data:", e);
-    return;
+    console.error('Push event has no data or data is not valid JSON', e);
+    data = {
+      title: 'New Notification',
+      body: 'Something new happened!',
+      data: { url: '/' },
+    };
   }
 
-  const title = data.title || 'PROCOM Slotify';
+  const { title, body, data: notificationData } = data;
+
   const options = {
-    body: data.body || 'You have a new notification.',
-    icon: '/android-chrome-192x192.png', // An icon to display
-    badge: '/android-chrome-192x192.png', // Icon for the notification tray
-    data: {
-      url: data.data?.url || '/', // URL to open on click
-    },
+    body: body,
+    icon: '/android-chrome-192x192.png', // An icon for the notification
+    badge: '/favicon.ico', // A smaller icon
+    data: notificationData, // URL to open on click
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
 });
 
-// Listen for notification click events
 self.addEventListener('notificationclick', (event) => {
+  console.log('Service Worker: Notification clicked.');
   event.notification.close(); // Close the notification
 
   const urlToOpen = event.notification.data.url || '/';
@@ -39,14 +51,13 @@ self.addEventListener('notificationclick', (event) => {
       type: 'window',
       includeUncontrolled: true,
     }).then((clientList) => {
-      // If a window for the app is already open, focus it
-      for (let i = 0; i < clientList.length; i++) {
-        let client = clientList[i];
+      // Check if there's already a window open with the target URL
+      for (const client of clientList) {
         if (client.url === urlToOpen && 'focus' in client) {
           return client.focus();
         }
       }
-      // Otherwise, open a new window
+      // If not, open a new window
       if (clients.openWindow) {
         return clients.openWindow(urlToOpen);
       }
