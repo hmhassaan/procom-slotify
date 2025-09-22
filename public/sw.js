@@ -1,36 +1,55 @@
-self.addEventListener('push', function(event) {
+// public/sw.js
+
+// Listen for push events
+self.addEventListener('push', (event) => {
   if (!event.data) {
-    console.error('Push event but no data');
+    console.error("Push event but no data");
     return;
   }
-  const data = event.data.json();
-  const title = data.title || "New Notification";
+  
+  let data = {};
+  try {
+    data = event.data.json();
+  } catch (e) {
+    console.error("Error parsing push data:", e);
+    return;
+  }
+
+  const title = data.title || 'PROCOM Slotify';
   const options = {
-    body: data.body,
-    icon: '/android-chrome-192x192.png',
-    badge: '/android-chrome-192x192.png',
+    body: data.body || 'You have a new notification.',
+    icon: '/android-chrome-192x192.png', // An icon to display
+    badge: '/android-chrome-192x192.png', // Icon for the notification tray
     data: {
-      url: data.data.url || '/'
-    }
+      url: data.data?.url || '/', // URL to open on click
+    },
   };
+
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
-self.addEventListener('notificationclick', function(event) {
-  event.notification.close();
+// Listen for notification click events
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close(); // Close the notification
+
+  const urlToOpen = event.notification.data.url || '/';
+
   event.waitUntil(
-    clients.openWindow(event.notification.data.url)
+    clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true,
+    }).then((clientList) => {
+      // If a window for the app is already open, focus it
+      for (let i = 0; i < clientList.length; i++) {
+        let client = clientList[i];
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // Otherwise, open a new window
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
   );
-});
-
-self.addEventListener('install', function(event) {
-  // Perform install steps
-  // e.g., precaching static assets
-  event.waitUntil(self.skipWaiting()); // Activate worker immediately
-});
-
-self.addEventListener('activate', function(event) {
-  // Perform activation steps
-  // e.g., cleaning up old caches
-  event.waitUntil(self.clients.claim()); // Become available to all pages
 });
