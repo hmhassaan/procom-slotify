@@ -3,9 +3,9 @@
 /**
  * @fileOverview A flow for sending web push notifications to users.
  *
- * - notifyUser - A function that sends a push notification.
+ * - notifyUserFlow - A flow that sends a push notification.
  * - NotificationPayload - The input type for the notifyUser function.
- * - getVapidPublicKey - A function that returns the VAPID public key.
+ * - getVapidPublicKeyFlow - A flow that returns the VAPID public key.
  */
 import '@/lib/firebaseAdmin';
 import { ai } from '@/ai/genkit';
@@ -20,10 +20,6 @@ const NotificationPayloadSchema = z.object({
   link: z.string().optional().describe('A URL to open when the notification is clicked.'),
 });
 export type NotificationPayload = z.infer<typeof NotificationPayloadSchema>;
-
-export async function notifyUser(payload: NotificationPayload): Promise<void> {
-  return notifyUserFlow(payload);
-}
 
 export const notifyUserFlow = ai.defineFlow(
   {
@@ -81,9 +77,9 @@ export const notifyUserFlow = ai.defineFlow(
 );
 
 
-export const getVapidPublicKey = ai.defineFlow(
+export const getVapidPublicKeyFlow = ai.defineFlow(
   {
-    name: 'getVapidPublicKey',
+    name: 'getVapidPublicKeyFlow',
     inputSchema: z.void(),
     outputSchema: z.string(),
   },
