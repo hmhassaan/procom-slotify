@@ -7,13 +7,15 @@ if (typeof window !== 'undefined') {
   throw new Error('firebase-admin should not be initialized in the browser.');
 }
 
+const projectId = 'studio-9576419778-be5d0';
+
 let app: App;
 if (!getApps().length) {
   const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
   app = initializeApp(
     serviceAccount
-      ? { credential: cert(JSON.parse(serviceAccount)) }
-      : undefined // Let Firebase use application default credentials
+      ? { credential: cert(JSON.parse(serviceAccount)), projectId }
+      : { projectId } // Let Firebase use application default credentials
   );
 } else {
   app = getApps()[0];
