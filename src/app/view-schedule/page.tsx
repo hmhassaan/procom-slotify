@@ -27,7 +27,7 @@ const getCurrentDay = () => {
     if (dayIndex === 0 || dayIndex === 6) { // Sunday or Saturday
         return "Monday";
     }
-    return weekdays[dayIndex -1];
+    return weekdays[dayIndex - 1];
 };
 
 type AdvancedFilterGroup = {
@@ -36,6 +36,8 @@ type AdvancedFilterGroup = {
   subTeams: string[];
   positions: string[];
 };
+
+type UnavailableInfo = User & { reason: string };
 
 export default function ViewSchedulePage() {
   const { users, timeSlots, slotCourses, loading, teams, positions, subTeams, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges } = useAppContext();
@@ -142,10 +144,10 @@ export default function ViewSchedulePage() {
   }, [users, teamFilters, positionFilters, subTeamFilters, advancedFilterGroups, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin]);
   
   const availability = useMemo(() => {
-    const availabilityData: Record<string, Record<string, { available: User[], unavailable: User[] }>> = {};
+    const availabilityData: Record<string, Record<string, { available: User[], unavailable: UnavailableInfo[] }>> = {};
     const positionOrder = new Map(positions.map((p, i) => [p.name, i]));
 
-    const sortUsers = (userList: User[]) => {
+    const sortUsers = (userList: (User | UnavailableInfo)[]) => {
       return userList.sort((a, b) => {
         const orderA = positionOrder.get(a.position) ?? 999;
         const orderB = positionOrder.get(b.position) ?? 999;
@@ -167,15 +169,16 @@ export default function ViewSchedulePage() {
       return availabilityData;
     }
 
-    const userBusySlots: Record<string, Record<string, Set<string>>> = {};
+    const userBusySlots: Record<string, Record<string, { reason: string, slots: Set<string>}>> = {};
 
     filteredUsers.forEach(user => {
       userBusySlots[user.id] = {};
       weekdays.forEach(day => {
-        userBusySlots[user.id][day] = new Set<string>();
+        userBusySlots[user.id][day] = { reason: "", slots: new Set<string>() };
 
         if (user.offDays.includes(day)) {
-          timeSlots.forEach(t => userBusySlots[user.id][day].add(t));
+          timeSlots.forEach(t => userBusySlots[user.id][day].slots.add(t));
+          userBusySlots[user.id][day].reason = "Off Day";
           return;
         }
 
@@ -188,11 +191,18 @@ export default function ViewSchedulePage() {
           if (matches.length > 0) {
             const hasLab = matches.some(isLab);
             if (hasLab) {
-              for (let j = 0; j < Math.min(i + 3, timeSlots.length); j++) {
-                userBusySlots[user.id][day].add(timeSlots[j]);
+              // For a lab, block the next 2 slots as well (total 3)
+              for (let j = i; j < Math.min(i + 3, timeSlots.length); j++) {
+                 const labTime = timeSlots[j];
+                 // Avoid overwriting a different class's reason
+                 if (!userBusySlots[user.id][day].slots.has(labTime)) {
+                    userBusySlots[user.id][day].slots.add(labTime);
+                    userBusySlots[user.id][day].reason = matches[0];
+                 }
               }
             } else {
-              userBusySlots[user.id][day].add(time);
+              userBusySlots[user.id][day].slots.add(time);
+              userBusySlots[user.id][day].reason = matches[0];
             }
           }
         }
@@ -201,18 +211,48 @@ export default function ViewSchedulePage() {
 
     weekdays.forEach(day => {
       timeSlots.forEach(time => {
-        const slotAvailability = { available: [] as User[], unavailable: [] as User[] };
+        const slotAvailability = { available: [] as User[], unavailable: [] as UnavailableInfo[] };
+        const dayIdx = slotCourses[day] || {};
+
         filteredUsers.forEach(user => {
-          if (userBusySlots[user.id]?.[day]?.has(time)) {
-            slotAvailability.unavailable.push(user);
+          if (user.offDays.includes(day)) {
+            slotAvailability.unavailable.push({ ...user, reason: "Off Day" });
+            return;
+          }
+
+          const slotCoursesForTime = dayIdx[time] || [];
+          const userCoursesInSlot = user.courses.filter(c => slotCoursesForTime.includes(c));
+          
+          let isBusy = false;
+          let busyReason = "";
+
+          // Check if busy due to a lab starting earlier
+           for (let i = Math.max(0, timeSlots.indexOf(time) - 2); i < timeSlots.indexOf(time); i++) {
+                const prevTime = timeSlots[i];
+                const prevSlotCourses = dayIdx[prevTime] || [];
+                const matchingPrevCourses = user.courses.filter(c => prevSlotCourses.includes(c));
+                if (matchingPrevCourses.some(isLab)) {
+                    isBusy = true;
+                    busyReason = matchingPrevCourses.find(isLab) || matchingPrevCourses[0];
+                    break;
+                }
+           }
+
+          if (!isBusy && userCoursesInSlot.length > 0) {
+              isBusy = true;
+              busyReason = userCoursesInSlot[0];
+          }
+
+          if (isBusy) {
+            slotAvailability.unavailable.push({ ...user, reason: busyReason });
           } else {
             slotAvailability.available.push(user);
           }
         });
         
         availabilityData[day][time] = {
-            available: sortUsers(slotAvailability.available),
-            unavailable: sortUsers(slotAvailability.unavailable),
+            available: sortUsers(slotAvailability.available) as User[],
+            unavailable: sortUsers(slotAvailability.unavailable) as UnavailableInfo[],
         };
       });
     });
@@ -426,6 +466,7 @@ export default function ViewSchedulePage() {
                                           <p className="font-semibold">{user.position} {positionMap.get(user.position)}</p>
                                           <p>{user.nuId}</p>
                                           <p>{user.team} {user.subTeam && `> ${user.subTeam}`}</p>
+                                          <p className="text-red-500">{user.reason}</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     ))
