@@ -38,6 +38,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { notifyAllUsersOnScheduleUpdateFlow } from "@/ai/flows/timetable-update-flow";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 const norm = (s: unknown) => (s ?? "").toString().replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim();
@@ -660,6 +661,16 @@ export default function AdminPage() {
         });
 
         toast({ title: "Success", description: "Timetable updated successfully." });
+
+        // Trigger notification flow
+        await notifyAllUsersOnScheduleUpdateFlow({
+          newCourses: newAllCourses,
+          slotCourses: slotIdx,
+          timeSlots: newTimeSlots,
+        });
+        
+        toast({ title: "Notifications Sent", description: "All users are being notified of the schedule update." });
+
       } catch (err) {
         console.error(err);
         setError(err instanceof Error ? err.message : "An unknown error occurred during file processing.");
