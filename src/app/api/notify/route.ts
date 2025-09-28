@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   }
 
   console.log('[notify] incoming body:', input);
-
+  
   try {
     // Run the Genkit action explicitly
     const result = await notifyUserFlow.run(input as any);
