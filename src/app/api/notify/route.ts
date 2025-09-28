@@ -4,29 +4,23 @@ import { notifyUserFlow } from '@/ai/flows/notify-flow';
 export const runtime = 'nodejs'; // web-push needs Node.js crypto
 
 export async function POST(req: Request) {
-  let input: unknown;
-
+  let body: any = null;
   try {
-    input = await req.json(); // <-- read the raw JSON body
+    body = await req.json();
   } catch {
     console.error('[notify] No/invalid JSON body');
-    return Response.json(
-      { error: 'Body must be JSON' },
-      { status: 400 }
-    );
+    return Response.json({ error: 'Body must be JSON' }, { status: 400 });
   }
 
-  console.log('[notify] incoming body:', input);
-  
+  // Accept both {userId,...} and {input:{userId,...}}
+  const payload = body?.input && typeof body.input === 'object' ? body.input : body;
+  console.log('[notify] normalized payload:', payload);
+
   try {
-    // Run the Genkit action explicitly
-    const result = await notifyUserFlow.run(input as any);
-    return Response.json({ result }); // result will be null/void
+    const result = await notifyUserFlow.run(payload);
+    return Response.json({ result }); // null (void)
   } catch (err: any) {
     console.error('[notify] flow error:', err);
-    return Response.json(
-      { error: err?.message ?? 'Flow error' },
-      { status: 500 }
-    );
+    return Response.json({ error: err?.message ?? 'Flow error' }, { status: 500 });
   }
 }
