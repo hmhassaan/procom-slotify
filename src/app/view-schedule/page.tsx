@@ -12,6 +12,11 @@ import { useRouter } from "next/navigation";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { PlusCircle, Trash2, Filter } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -26,12 +31,22 @@ const getCurrentDay = () => {
     return weekdays[dayIndex -1];
 };
 
+type AdvancedFilterGroup = {
+  id: number;
+  team: string;
+  subTeam: string;
+  position: string;
+};
 
 export default function ViewSchedulePage() {
   const { users, timeSlots, slotCourses, loading, teams, positions, subTeams, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges } = useAppContext();
   const [teamFilters, setTeamFilters] = useState<string[]>([]);
   const [positionFilters, setPositionFilters] = useState<string[]>([]);
   const [subTeamFilters, setSubTeamFilters] = useState<string[]>([]);
+
+  const [isAdvancedFilterOpen, setIsAdvancedFilterOpen] = useState(false);
+  const [advancedFilterGroups, setAdvancedFilterGroups] = useState<AdvancedFilterGroup[]>([]);
+  const [nextGroupId, setNextGroupId] = useState(1);
 
   const { currentUser, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -95,12 +110,27 @@ export default function ViewSchedulePage() {
     // First, get all users the current user is allowed to see
     const visibleUsers = users.filter(canViewUser);
 
-    // Then, apply the UI filters on that set of users
-    const filteredSet = visibleUsers.filter(user =>
-      (teamFilters.length === 0 || teamFilters.includes(user.team || '')) &&
-      (positionFilters.length === 0 || positionFilters.includes(user.position)) &&
-      (subTeamFilters.length === 0 || (user.subTeam && subTeamFilters.includes(user.subTeam)))
-    );
+    let filteredSet: User[];
+
+    if (advancedFilterGroups.length > 0) {
+        // Advanced Filter Logic (OR between groups)
+        filteredSet = visibleUsers.filter(user => {
+            return advancedFilterGroups.some(group => {
+                const teamMatch = !group.team || user.team === group.team;
+                const subTeamMatch = !group.subTeam || user.subTeam === group.subTeam;
+                const positionMatch = !group.position || user.position === group.position;
+                return teamMatch && subTeamMatch && positionMatch;
+            });
+        });
+
+    } else {
+        // Standard Filter Logic (AND between filters)
+        filteredSet = visibleUsers.filter(user =>
+            (teamFilters.length === 0 || teamFilters.includes(user.team || '')) &&
+            (positionFilters.length === 0 || positionFilters.includes(user.position)) &&
+            (subTeamFilters.length === 0 || (user.subTeam && subTeamFilters.includes(user.subTeam)))
+        );
+    }
     
     // Ensure the current user is always in the final list if they exist
     const finalUserSet = new Set(filteredSet);
@@ -110,7 +140,7 @@ export default function ViewSchedulePage() {
     }
     
     return Array.from(finalUserSet);
-  }, [users, teamFilters, positionFilters, subTeamFilters, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin]);
+  }, [users, teamFilters, positionFilters, subTeamFilters, advancedFilterGroups, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin]);
   
   const availability = useMemo(() => {
     const availabilityData: Record<string, Record<string, { available: User[], unavailable: User[] }>> = {};
@@ -159,7 +189,7 @@ export default function ViewSchedulePage() {
           if (matches.length > 0) {
             const hasLab = matches.some(isLab);
             if (hasLab) {
-              for (let j = i; j < Math.min(i + 3, timeSlots.length); j++) {
+              for (let j = 0; j < Math.min(i + 3, timeSlots.length); j++) {
                 userBusySlots[user.id][day].add(timeSlots[j]);
               }
             } else {
@@ -198,6 +228,28 @@ export default function ViewSchedulePage() {
 
   const pageLoading = loading || authLoading;
 
+  // Advanced Filter Dialog Functions
+  const addFilterGroup = () => {
+    setAdvancedFilterGroups(prev => [...prev, { id: nextGroupId, team: '', subTeam: '', position: '' }]);
+    setNextGroupId(prev => prev + 1);
+  };
+
+  const removeFilterGroup = (id: number) => {
+    setAdvancedFilterGroups(prev => prev.filter(group => group.id !== id));
+  };
+
+  const updateFilterGroup = (id: number, field: keyof Omit<AdvancedFilterGroup, 'id'>, value: string) => {
+    setAdvancedFilterGroups(prev => prev.map(group =>
+      group.id === id ? { ...group, [field]: value } : group
+    ));
+  };
+
+  const clearAdvancedFilters = () => {
+    setAdvancedFilterGroups([]);
+  };
+
+  const isAdvancedFilterActive = advancedFilterGroups.length > 0;
+
   if (pageLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -219,27 +271,100 @@ export default function ViewSchedulePage() {
             <CardDescription className="text-lg text-muted-foreground">
               View team availability based on selected filters. Your schedule is always visible.
             </CardDescription>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-6">
                 <MultiSelect
                     options={availableTeams}
                     selected={teamFilters}
                     onChange={setTeamFilters}
                     placeholder="Filter by team..."
-                    disabled={!hasAdminPrivileges}
+                    disabled={!hasAdminPrivileges || isAdvancedFilterActive}
                 />
                 <MultiSelect
                     options={availableSubTeams}
                     selected={subTeamFilters}
                     onChange={setSubTeamFilters}
                     placeholder="Filter by sub-team..."
-                    disabled={!hasAdminPrivileges || availableSubTeams.length === 0}
+                    disabled={!hasAdminPrivileges || availableSubTeams.length === 0 || isAdvancedFilterActive}
                 />
                 <MultiSelect
                     options={positionOptions}
                     selected={positionFilters}
                     onChange={setPositionFilters}
                     placeholder="Filter by position..."
+                    disabled={isAdvancedFilterActive}
                 />
+                 <Dialog open={isAdvancedFilterOpen} onOpenChange={setIsAdvancedFilterOpen}>
+                    <DialogTrigger asChild>
+                        <Button variant="outline" className="gap-2">
+                            <Filter className="h-4 w-4" />
+                            Advanced Filters {isAdvancedFilterActive && `(${advancedFilterGroups.length})`}
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-4xl">
+                        <DialogHeader>
+                            <DialogTitle>Advanced Filters</DialogTitle>
+                            <CardDescription>
+                                Show users who match ANY of the following groups. Within each group, users must match ALL criteria.
+                            </CardDescription>
+                        </DialogHeader>
+                        <ScrollArea className="max-h-[60vh] p-1">
+                            <div className="space-y-4 p-4">
+                                {advancedFilterGroups.map((group, index) => {
+                                    const availableSubTeamsForGroup = group.team ? (subTeams[group.team] || []) : [];
+                                    return (
+                                        <div key={group.id} className="p-4 border rounded-lg space-y-3 relative">
+                                            <Label className="font-semibold text-muted-foreground">Filter Group {index + 1}</Label>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div>
+                                                    <Label>Team</Label>
+                                                    <Select value={group.team} onValueChange={(value) => updateFilterGroup(group.id, 'team', value)} disabled={!hasAdminPrivileges}>
+                                                        <SelectTrigger><SelectValue placeholder="Any Team" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="">Any Team</SelectItem>
+                                                            {availableTeams.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div>
+                                                    <Label>Sub-team</Label>
+                                                    <Select value={group.subTeam} onValueChange={(value) => updateFilterGroup(group.id, 'subTeam', value)} disabled={!hasAdminPrivileges || availableSubTeamsForGroup.length === 0}>
+                                                        <SelectTrigger><SelectValue placeholder="Any Sub-team" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="">Any Sub-team</SelectItem>
+                                                            {availableSubTeamsForGroup.map(st => <SelectItem key={st} value={st}>{st}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div>
+                                                    <Label>Position</Label>
+                                                    <Select value={group.position} onValueChange={(value) => updateFilterGroup(group.id, 'position', value)}>
+                                                        <SelectTrigger><SelectValue placeholder="Any Position" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="">Any Position</SelectItem>
+                                                            {positionOptions.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+                                            <Button variant="ghost" size="icon" className="absolute top-2 right-2" onClick={() => removeFilterGroup(group.id)}>
+                                                <Trash2 className="w-4 h-4 text-destructive" />
+                                            </Button>
+                                        </div>
+                                    );
+                                })}
+                                <Button variant="outline" className="w-full" onClick={addFilterGroup}>
+                                    <PlusCircle className="mr-2 h-4 w-4" /> Add Filter Group
+                                </Button>
+                            </div>
+                        </ScrollArea>
+                        <DialogFooter className="sm:justify-between items-center gap-2">
+                             <Button variant="destructive" onClick={clearAdvancedFilters} disabled={!isAdvancedFilterActive}>
+                                Clear All Advanced Filters
+                            </Button>
+                            <Button onClick={() => setIsAdvancedFilterOpen(false)}>Close</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
           </CardHeader>
           <CardContent>
