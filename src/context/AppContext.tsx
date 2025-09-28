@@ -148,10 +148,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-            userId,
-            title,
-            message,
-            link: newNotification.link,
+          userId,
+          title,
+          message,
+          link: newNotification.link,
         }),
       });
     } catch (e) {
@@ -433,5 +433,3 @@ export const useAppContext = () => {
   }
   return context;
 };
-
-    
