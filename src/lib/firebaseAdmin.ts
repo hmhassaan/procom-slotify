@@ -9,18 +9,33 @@ if (typeof window !== 'undefined') {
 
 const projectId = 'studio-9576419778-be5d0';
 
-let app: App;
-if (!getApps().length) {
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
-  app = initializeApp(
-    serviceAccount
-      ? { credential: cert(JSON.parse(serviceAccount)), projectId }
-      : { projectId } // Let Firebase use application default credentials
-  );
-} else {
+let app: App | undefined;
+
+// Only initialize if the service account is available.
+// This prevents crashes in local development environments.
+const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+
+if (getApps().length === 0 && serviceAccountJson) {
+  try {
+    const serviceAccount = JSON.parse(serviceAccountJson);
+    app = initializeApp({
+      credential: cert(serviceAccount),
+      projectId,
+    });
+  } catch (e) {
+    console.error('Failed to parse FIREBASE_SERVICE_ACCOUNT or initialize app:', e);
+  }
+} else if (getApps().length > 0) {
   app = getApps()[0];
 }
 
-const adminDb = getFirestore(app);
+const adminDb = app ? getFirestore(app) : undefined;
+
+if (!adminDb) {
+  console.warn(
+    'Firebase Admin DB not initialized. FIREBASE_SERVICE_ACCOUNT env var might be missing. Server-side Firestore operations will fail.'
+  );
+}
+
 
 export { app as adminApp, adminDb };
