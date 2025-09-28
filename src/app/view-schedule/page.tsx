@@ -15,11 +15,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { PlusCircle, Trash2, Filter } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-const ANY_VALUE = "__any__";
 
 const isLab = (name: string) => /\blab\b/i.test(name);
 
@@ -34,9 +32,9 @@ const getCurrentDay = () => {
 
 type AdvancedFilterGroup = {
   id: number;
-  team: string;
-  subTeam: string;
-  position: string;
+  teams: string[];
+  subTeams: string[];
+  positions: string[];
 };
 
 export default function ViewSchedulePage() {
@@ -117,9 +115,9 @@ export default function ViewSchedulePage() {
         // Advanced Filter Logic (OR between groups)
         filteredSet = visibleUsers.filter(user => {
             return advancedFilterGroups.some(group => {
-                const teamMatch = !group.team || group.team === ANY_VALUE || user.team === group.team;
-                const subTeamMatch = !group.subTeam || group.subTeam === ANY_VALUE || user.subTeam === group.subTeam;
-                const positionMatch = !group.position || group.position === ANY_VALUE || user.position === group.position;
+                const teamMatch = group.teams.length === 0 || group.teams.includes(user.team);
+                const subTeamMatch = group.subTeams.length === 0 || (user.subTeam && group.subTeams.includes(user.subTeam));
+                const positionMatch = group.positions.length === 0 || group.positions.includes(user.position);
                 return teamMatch && subTeamMatch && positionMatch;
             });
         });
@@ -231,7 +229,7 @@ export default function ViewSchedulePage() {
 
   // Advanced Filter Dialog Functions
   const addFilterGroup = () => {
-    setAdvancedFilterGroups(prev => [...prev, { id: nextGroupId, team: '', subTeam: '', position: '' }]);
+    setAdvancedFilterGroups(prev => [...prev, { id: nextGroupId, teams: [], subTeams: [], positions: [] }]);
     setNextGroupId(prev => prev + 1);
   };
 
@@ -239,7 +237,7 @@ export default function ViewSchedulePage() {
     setAdvancedFilterGroups(prev => prev.filter(group => group.id !== id));
   };
 
-  const updateFilterGroup = (id: number, field: keyof Omit<AdvancedFilterGroup, 'id'>, value: string) => {
+  const updateFilterGroup = (id: number, field: keyof Omit<AdvancedFilterGroup, 'id'>, value: string[]) => {
     setAdvancedFilterGroups(prev => prev.map(group =>
       group.id === id ? { ...group, [field]: value } : group
     ));
@@ -305,46 +303,47 @@ export default function ViewSchedulePage() {
                         <DialogHeader>
                             <DialogTitle>Advanced Filters</DialogTitle>
                             <CardDescription>
-                                Show users who match ANY of the following groups. Within each group, users must match ALL criteria.
+                                Show users who match ANY of the following groups. Within each group, users must match ALL criteria selected.
                             </CardDescription>
                         </DialogHeader>
                         <ScrollArea className="max-h-[60vh] p-1">
                             <div className="space-y-4 p-4">
                                 {advancedFilterGroups.map((group, index) => {
-                                    const availableSubTeamsForGroup = group.team ? (subTeams[group.team] || []) : [];
+                                    const availableSubTeamsForGroup = Object.entries(subTeams)
+                                        .filter(([team]) => group.teams.length === 0 || group.teams.includes(team))
+                                        .flatMap(([, subs]) => subs);
                                     return (
                                         <div key={group.id} className="p-4 border rounded-lg space-y-3 relative">
                                             <Label className="font-semibold text-muted-foreground">Filter Group {index + 1}</Label>
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                <div>
-                                                    <Label>Team</Label>
-                                                    <Select value={group.team} onValueChange={(value) => updateFilterGroup(group.id, 'team', value)} disabled={!hasAdminPrivileges}>
-                                                        <SelectTrigger><SelectValue placeholder="Any Team" /></SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value={ANY_VALUE}>Any Team</SelectItem>
-                                                            {availableTeams.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                                                        </SelectContent>
-                                                    </Select>
+                                                <div className="space-y-1">
+                                                    <Label>Team(s)</Label>
+                                                    <MultiSelect
+                                                        options={availableTeams}
+                                                        selected={group.teams}
+                                                        onChange={(value) => updateFilterGroup(group.id, 'teams', value)}
+                                                        placeholder="Any Team"
+                                                        disabled={!hasAdminPrivileges}
+                                                    />
                                                 </div>
-                                                <div>
-                                                    <Label>Sub-team</Label>
-                                                    <Select value={group.subTeam} onValueChange={(value) => updateFilterGroup(group.id, 'subTeam', value)} disabled={!hasAdminPrivileges || availableSubTeamsForGroup.length === 0}>
-                                                        <SelectTrigger><SelectValue placeholder="Any Sub-team" /></SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value={ANY_VALUE}>Any Sub-team</SelectItem>
-                                                            {availableSubTeamsForGroup.map(st => <SelectItem key={st} value={st}>{st}</SelectItem>)}
-                                                        </SelectContent>
-                                                    </Select>
+                                                <div className="space-y-1">
+                                                    <Label>Sub-team(s)</Label>
+                                                     <MultiSelect
+                                                        options={availableSubTeamsForGroup}
+                                                        selected={group.subTeams}
+                                                        onChange={(value) => updateFilterGroup(group.id, 'subTeams', value)}
+                                                        placeholder="Any Sub-team"
+                                                        disabled={!hasAdminPrivileges || availableSubTeamsForGroup.length === 0}
+                                                    />
                                                 </div>
-                                                <div>
-                                                    <Label>Position</Label>
-                                                    <Select value={group.position} onValueChange={(value) => updateFilterGroup(group.id, 'position', value)}>
-                                                        <SelectTrigger><SelectValue placeholder="Any Position" /></SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value={ANY_VALUE}>Any Position</SelectItem>
-                                                            {positionOptions.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                                                        </SelectContent>
-                                                    </Select>
+                                                <div className="space-y-1">
+                                                    <Label>Position(s)</Label>
+                                                     <MultiSelect
+                                                        options={positionOptions}
+                                                        selected={group.positions}
+                                                        onChange={(value) => updateFilterGroup(group.id, 'positions', value)}
+                                                        placeholder="Any Position"
+                                                    />
                                                 </div>
                                             </div>
                                             <Button variant="ghost" size="icon" className="absolute top-2 right-2" onClick={() => removeFilterGroup(group.id)}>
