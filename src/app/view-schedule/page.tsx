@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const ANY_VALUE = "__any__";
 
 const isLab = (name: string) => /\blab\b/i.test(name);
 
@@ -116,9 +117,9 @@ export default function ViewSchedulePage() {
         // Advanced Filter Logic (OR between groups)
         filteredSet = visibleUsers.filter(user => {
             return advancedFilterGroups.some(group => {
-                const teamMatch = !group.team || user.team === group.team;
-                const subTeamMatch = !group.subTeam || user.subTeam === group.subTeam;
-                const positionMatch = !group.position || user.position === group.position;
+                const teamMatch = !group.team || group.team === ANY_VALUE || user.team === group.team;
+                const subTeamMatch = !group.subTeam || group.subTeam === ANY_VALUE || user.subTeam === group.subTeam;
+                const positionMatch = !group.position || group.position === ANY_VALUE || user.position === group.position;
                 return teamMatch && subTeamMatch && positionMatch;
             });
         });
@@ -320,7 +321,7 @@ export default function ViewSchedulePage() {
                                                     <Select value={group.team} onValueChange={(value) => updateFilterGroup(group.id, 'team', value)} disabled={!hasAdminPrivileges}>
                                                         <SelectTrigger><SelectValue placeholder="Any Team" /></SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="">Any Team</SelectItem>
+                                                            <SelectItem value={ANY_VALUE}>Any Team</SelectItem>
                                                             {availableTeams.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                                                         </SelectContent>
                                                     </Select>
@@ -330,7 +331,7 @@ export default function ViewSchedulePage() {
                                                     <Select value={group.subTeam} onValueChange={(value) => updateFilterGroup(group.id, 'subTeam', value)} disabled={!hasAdminPrivileges || availableSubTeamsForGroup.length === 0}>
                                                         <SelectTrigger><SelectValue placeholder="Any Sub-team" /></SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="">Any Sub-team</SelectItem>
+                                                            <SelectItem value={ANY_VALUE}>Any Sub-team</SelectItem>
                                                             {availableSubTeamsForGroup.map(st => <SelectItem key={st} value={st}>{st}</SelectItem>)}
                                                         </SelectContent>
                                                     </Select>
@@ -340,7 +341,7 @@ export default function ViewSchedulePage() {
                                                     <Select value={group.position} onValueChange={(value) => updateFilterGroup(group.id, 'position', value)}>
                                                         <SelectTrigger><SelectValue placeholder="Any Position" /></SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="">Any Position</SelectItem>
+                                                            <SelectItem value={ANY_VALUE}>Any Position</SelectItem>
                                                             {positionOptions.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                                                         </SelectContent>
                                                     </Select>
