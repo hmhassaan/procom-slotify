@@ -36,8 +36,8 @@ export const notifyUserFlow = ai.defineFlow(
             process.env.VAPID_PRIVATE_KEY
         );
     } else {
-        console.warn("VAPID keys not configured. Push notifications will not work.");
-        return; // Exit if not configured
+        console.warn("VAPID keys not configured. Push notifications will not be sent, but flow will complete.");
+        // Do not return here, allow flow to complete gracefully
     }
 
     const firestore = getFirestore();
@@ -46,33 +46,36 @@ export const notifyUserFlow = ai.defineFlow(
 
     if (subscriptionsSnapshot.empty) {
       console.log(`User ${payload.userId} has no push subscriptions.`);
-      return;
+      return; // Return here is okay as it's the end of the logical path.
     }
 
-    const notificationData = JSON.stringify({
-      title: payload.title,
-      body: payload.message,
-      data: {
-        url: payload.link || '/',
-      },
-    });
+    // Only attempt to send if VAPID keys are configured.
+    if (process.env.VAPID_PUBLIC_KEY) {
+        const notificationData = JSON.stringify({
+          title: payload.title,
+          body: payload.message,
+          data: {
+            url: payload.link || '/',
+          },
+        });
 
-    const promises = subscriptionsSnapshot.docs.map(async (doc) => {
-      const subscription = doc.data() as webpush.PushSubscription;
-      try {
-        await webpush.sendNotification(subscription, notificationData);
-        console.log(`Push notification sent successfully to subscription ${doc.id} for user ${payload.userId}.`);
-      } catch (error: any) {
-        console.error(`Error sending push notification to subscription ${doc.id} for user ${payload.userId}:`, { status: error.statusCode, body: error.body, message: error.message });
-        // If the subscription is expired or invalid (404 Not Found, 410 Gone), remove it.
-        if (error.statusCode === 404 || error.statusCode === 410) {
-          console.log(`Subscription ${doc.id} for user ${payload.userId} is invalid. Removing.`);
-          await doc.ref.delete();
-        }
-      }
-    });
+        const promises = subscriptionsSnapshot.docs.map(async (doc) => {
+          const subscription = doc.data() as webpush.PushSubscription;
+          try {
+            await webpush.sendNotification(subscription, notificationData);
+            console.log(`Push notification sent successfully to subscription ${doc.id} for user ${payload.userId}.`);
+          } catch (error: any) {
+            console.error(`Error sending push notification to subscription ${doc.id} for user ${payload.userId}:`, { status: error.statusCode, body: error.body, message: error.message });
+            // If the subscription is expired or invalid (404 Not Found, 410 Gone), remove it.
+            if (error.statusCode === 404 || error.statusCode === 410) {
+              console.log(`Subscription ${doc.id} for user ${payload.userId} is invalid. Removing.`);
+              await doc.ref.delete();
+            }
+          }
+        });
 
-    await Promise.all(promises);
+        await Promise.all(promises);
+    }
   }
 );
 
