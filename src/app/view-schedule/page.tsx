@@ -14,8 +14,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { PlusCircle, Trash2, Filter } from "lucide-react";
+import { PlusCircle, Trash2, Filter, Star, ChevronDown } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Badge } from "@/components/ui/badge";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -38,6 +40,14 @@ type AdvancedFilterGroup = {
 };
 
 type UnavailableInfo = User & { reason: string };
+
+type SlotInfo = {
+  day: string;
+  time: string;
+  availableCount: number;
+  totalCount: number;
+};
+
 
 export default function ViewSchedulePage() {
   const { users, timeSlots, slotCourses, loading, teams, positions, subTeams, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges } = useAppContext();
@@ -261,6 +271,39 @@ export default function ViewSchedulePage() {
   }, [filteredUsers, timeSlots, slotCourses, positions]);
   
   const positionMap = useMemo(() => new Map(positions.map(p => [p.name, p.icon])), [positions]);
+  
+  const bestSlots = useMemo(() => {
+    if (filteredUsers.length === 0) {
+      return { today: [], overall: [] };
+    }
+    
+    const allSlots: SlotInfo[] = [];
+    const today = getCurrentDay();
+    const todaySlots: SlotInfo[] = [];
+
+    weekdays.forEach(day => {
+      timeSlots.forEach(time => {
+        const availableCount = availability[day]?.[time]?.available.length || 0;
+        const slotInfo: SlotInfo = {
+            day,
+            time,
+            availableCount,
+            totalCount: filteredUsers.length
+        };
+        allSlots.push(slotInfo);
+        if (day === today) {
+          todaySlots.push(slotInfo);
+        }
+      });
+    });
+
+    const sortFn = (a: SlotInfo, b: SlotInfo) => b.availableCount - a.availableCount;
+    
+    return {
+      today: todaySlots.sort(sortFn).slice(0, 2),
+      overall: allSlots.sort(sortFn).slice(0, 3)
+    };
+  }, [availability, filteredUsers, timeSlots]);
 
 
   const isScheduleEmpty = timeSlots.length === 0;
@@ -414,6 +457,47 @@ export default function ViewSchedulePage() {
                 <p>Please ask an admin to upload the timetable.</p>
               </div>
             ) : (
+             <>
+               <Collapsible className="mb-4 border rounded-lg">
+                <CollapsibleTrigger className="w-full p-3 flex justify-between items-center bg-muted/50 hover:bg-muted/80 rounded-t-lg">
+                  <div className="flex items-center gap-2">
+                    <Star className="w-5 h-5 text-yellow-500" />
+                    <h4 className="font-semibold">Best Slots</h4>
+                  </div>
+                  <ChevronDown className="w-5 h-5 transition-transform [&[data-state=open]]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="p-4 text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h5 className="font-bold mb-2">Top 2 Slots Today ({getCurrentDay()})</h5>
+                       {bestSlots.today.length > 0 && bestSlots.today[0].availableCount > 0 ? (
+                        <div className="space-y-2">
+                          {bestSlots.today.map((slot, index) => (
+                            <div key={`today-${index}`} className="flex items-center gap-2">
+                              <Badge variant="secondary">{slot.time}</Badge>
+                              <span className="font-medium">{slot.availableCount} / {slot.totalCount} members available</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <p className="text-muted-foreground italic">Not enough availability data for today.</p>}
+                    </div>
+                     <div>
+                      <h5 className="font-bold mb-2">Top 3 Slots Overall (This Week)</h5>
+                       {bestSlots.overall.length > 0 && bestSlots.overall[0].availableCount > 0 ? (
+                        <div className="space-y-2">
+                          {bestSlots.overall.map((slot, index) => (
+                            <div key={`overall-${index}`} className="flex items-center gap-2">
+                              <Badge variant="secondary">{slot.day}, {slot.time}</Badge>
+                              <span className="font-medium">{slot.availableCount} / {slot.totalCount} members available</span>
+                            </div>
+                          ))}
+                        </div>
+                       ) : <p className="text-muted-foreground italic">Not enough availability data.</p>}
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
               <Tabs defaultValue={getCurrentDay()}>
                 <TabsList className="w-full justify-start overflow-x-auto">
                     {weekdays.map(day => <TabsTrigger key={day} value={day}>{day}</TabsTrigger>)}
@@ -481,6 +565,7 @@ export default function ViewSchedulePage() {
                   </TabsContent>
                 ))}
               </Tabs>
+             </>
             )}
           </CardContent>
         </Card>
@@ -488,5 +573,7 @@ export default function ViewSchedulePage() {
     </TooltipProvider>
   );
 }
+
+    
 
     
