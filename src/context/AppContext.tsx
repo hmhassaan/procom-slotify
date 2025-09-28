@@ -142,6 +142,25 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
     await addDoc(notificationsCollection, newNotification);
 
+    // fire a web-push too
+    try {
+      await fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          input: {
+            userId,
+            title,
+            message,
+            link: newNotification.link,
+          },
+        }),
+      });
+    } catch (e) {
+      console.error('Failed to trigger web push:', e);
+    }
+
+
     // Also add to local state immediately if it's for the current user
     if (userId === currentUser?.uid) {
         setState(prevState => ({

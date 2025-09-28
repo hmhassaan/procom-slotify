@@ -7,7 +7,7 @@
  * - NotificationPayload - The input type for the notifyUser function.
  * - getVapidPublicKey - A function that returns the VAPID public key.
  */
-
+import '@/lib/firebaseAdmin';
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import * as webpush from 'web-push';
@@ -25,7 +25,7 @@ export async function notifyUser(payload: NotificationPayload): Promise<void> {
   return notifyUserFlow(payload);
 }
 
-const notifyUserFlow = ai.defineFlow(
+export const notifyUserFlow = ai.defineFlow(
   {
     name: 'notifyUserFlow',
     inputSchema: NotificationPayloadSchema,
@@ -67,7 +67,7 @@ const notifyUserFlow = ai.defineFlow(
         await webpush.sendNotification(subscription, notificationData);
         console.log(`Push notification sent successfully to subscription ${doc.id} for user ${payload.userId}.`);
       } catch (error: any) {
-        console.error(`Error sending push notification to subscription ${doc.id} for user ${payload.userId}:`, error.body);
+        console.error(`Error sending push notification to subscription ${doc.id} for user ${payload.userId}:`, { status: error.statusCode, body: error.body, message: error.message });
         // If the subscription is expired or invalid (404 Not Found, 410 Gone), remove it.
         if (error.statusCode === 404 || error.statusCode === 410) {
           console.log(`Subscription ${doc.id} for user ${payload.userId} is invalid. Removing.`);
