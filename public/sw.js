@@ -40,7 +40,7 @@ self.addEventListener('push', event => {
   const options = {
     body: data.body || 'You have a new message.',
     icon: '/android-chrome-192x192.png', // Icon to display in the notification
-    badge: '/android-chrome-192x192.png', // Icon for the notification tray on Android
+    badge: '/notification-badge-72.png', // Icon for the notification tray on Android
     data: {
       url: data.data?.url || '/', // The URL to open when the notification is clicked
     },
