@@ -50,7 +50,7 @@ export const notifyUserFlow = ai.defineFlow(
     }
 
     // Only attempt to send if VAPID keys are configured.
-    if (process.env.VAPID_PUBLIC_KEY) {
+    if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY && process.env.VAPID_MAILTO) {
         const notificationData = JSON.stringify({
           title: payload.title,
           body: payload.message,
@@ -93,3 +93,5 @@ export const getVapidPublicKeyFlow = ai.defineFlow(
     return process.env.VAPID_PUBLIC_KEY;
   }
 );
+
+    
