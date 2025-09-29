@@ -156,7 +156,7 @@ export default function AddSchedulePage() {
 
     let finalRole = role;
     let finalExecutiveTeams = currentUserProfile?.teams;
-    let finalNotificationPreferences = currentUserProfile?.notificationPreferences;
+    let finalNotificationPreferences = currentUserProfile?.notificationPreferences || { onUserJoin: { teams: [], subTeams: [] } };
 
     if (hasAdminRole && (teamChanged || subTeamChanged)) {
       finalRole = 'none';
@@ -470,5 +470,7 @@ export default function AddSchedulePage() {
     </>
   );
 }
+
+    
 
     
