@@ -384,6 +384,7 @@ export default function ViewSchedulePage() {
           }
           
           const userMeetingsInSlot = meetings.filter(m => {
+            if (!m.date) return false;
             const meetingDate = new Date(m.date);
             const meetingDay = format(meetingDate, "eeee"); // "Monday", "Tuesday", etc.
             return meetingDay === day && m.time === time && m.attendees.some(a => a.userId === user.id && a.status === 'accepted');
@@ -478,6 +479,7 @@ export default function ViewSchedulePage() {
     if (!currentUserProfile) return map;
 
     meetings.forEach(meeting => {
+      if (!meeting.date) return;
       const meetingDate = new Date(meeting.date);
       const meetingDay = format(meetingDate, "eeee");
       if (meeting.attendees.some(a => a.userId === currentUserProfile.id && a.status === 'accepted')) {
