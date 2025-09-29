@@ -98,20 +98,19 @@ const useViewSchedule = () => {
 
 
 const ScheduleMeetingDialog = ({ day, time }: { day: string, time: string }) => {
-  const { users, currentUserProfile, createMeeting, canViewUser } = useAppContext();
+  const { users, currentUserProfile, createMeeting, canViewUser, teams, subTeams, positions } = useAppContext();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   
-  const allVisibleUsers = useMemo(() => users.filter(u => canViewUser(u) && u.id !== currentUserProfile?.id), [users, canViewUser, currentUserProfile]);
-  
-  // This logic should be aligned with the main page's filteredUsers
-  const { filteredUsers } = useViewSchedule(); 
+  const { filteredUsers } = useViewSchedule();
   
   useEffect(() => {
     if (isOpen) {
-      const defaultSelectedIds = filteredUsers.filter(u => u.id !== currentUserProfile?.id).map(u => u.id);
+      const defaultSelectedIds = filteredUsers
+          .filter(u => u.id !== currentUserProfile?.id)
+          .map(u => u.id);
       setSelectedUserIds(defaultSelectedIds);
       setMeetingTitle("");
     }
@@ -143,6 +142,37 @@ const ScheduleMeetingDialog = ({ day, time }: { day: string, time: string }) => 
     }
   };
 
+  const inviteeListStructure = useMemo(() => {
+    const allVisibleUsers = users.filter(u => canViewUser(u) && u.id !== currentUserProfile?.id);
+    const positionOrder = new Map(positions.map((p, i) => [p.name, i]));
+    const sortUsers = (userList: User[]) => {
+      return userList.sort((a, b) => {
+        const orderA = positionOrder.get(a.position) ?? 999;
+        const orderB = positionOrder.get(b.position) ?? 999;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.name.localeCompare(b.name);
+      });
+    };
+
+    return teams.map(team => {
+        const teamUsers = allVisibleUsers.filter(u => u.team === team);
+        const teamSubTeams = subTeams[team] || [];
+        const usersInNoSubTeam = teamUsers.filter(u => !u.subTeam);
+
+        const subTeamsWithUsers = teamSubTeams.map(subTeamName => ({
+            name: subTeamName,
+            users: sortUsers(teamUsers.filter(u => u.subTeam === subTeamName))
+        }));
+
+        return {
+            name: team,
+            usersInNoSubTeam: sortUsers(usersInNoSubTeam),
+            subTeams: subTeamsWithUsers,
+        }
+    }).filter(team => team.usersInNoSubTeam.length > 0 || team.subTeams.some(st => st.users.length > 0));
+
+  }, [users, teams, subTeams, positions, canViewUser, currentUserProfile]);
+
   if (!currentUserProfile) return null;
 
   return (
@@ -163,19 +193,31 @@ const ScheduleMeetingDialog = ({ day, time }: { day: string, time: string }) => 
           <div>
             <Label>Invite Members</Label>
             <ScrollArea className="h-60 border rounded-md p-4">
-              <div className="space-y-2">
-                {allVisibleUsers.map(user => (
-                  <div key={user.id} className="flex items-center gap-2">
-                    <Checkbox
-                      id={`invite-${user.id}`}
-                      checked={selectedUserIds.includes(user.id)}
-                      onCheckedChange={(checked) => {
-                        setSelectedUserIds(prev =>
-                          checked ? [...prev, user.id] : prev.filter(id => id !== user.id)
-                        );
-                      }}
-                    />
-                    <Label htmlFor={`invite-${user.id}`}>{user.name} - {user.position}</Label>
+              <div className="space-y-4">
+                {inviteeListStructure.map(team => (
+                  <div key={team.name}>
+                    <h3 className="font-semibold text-sm border-b mb-2 pb-1">{team.name}</h3>
+                    <div className="space-y-2">
+                       {team.usersInNoSubTeam.map(user => (
+                          <div key={user.id} className="flex items-center gap-2">
+                            <Checkbox id={`invite-${user.id}`} checked={selectedUserIds.includes(user.id)} onCheckedChange={(checked) => setSelectedUserIds(prev => checked ? [...prev, user.id] : prev.filter(id => id !== user.id))} />
+                            <Label htmlFor={`invite-${user.id}`}>{user.name} - {user.position}</Label>
+                          </div>
+                        ))}
+                       {team.subTeams.map(subTeam => (
+                          <div key={subTeam.name} className="pl-4 pt-2">
+                              <h4 className="font-medium text-xs text-muted-foreground mb-1">{subTeam.name}</h4>
+                              <div className="space-y-2">
+                                  {subTeam.users.map(user => (
+                                      <div key={user.id} className="flex items-center gap-2">
+                                          <Checkbox id={`invite-${user.id}`} checked={selectedUserIds.includes(user.id)} onCheckedChange={(checked) => setSelectedUserIds(prev => checked ? [...prev, user.id] : prev.filter(id => id !== user.id))} />
+                                          <Label htmlFor={`invite-${user.id}`}>{user.name} - {user.position}</Label>
+                                      </div>
+                                  ))}
+                              </div>
+                          </div>
+                       ))}
+                    </div>
                   </div>
                 ))}
               </div>
