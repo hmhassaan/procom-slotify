@@ -24,6 +24,12 @@ export type User = {
     teams: string[];
     subTeams: string[];
   };
+  notificationPreferences?: {
+    onUserJoin?: {
+      teams: string[];
+      subTeams: string[];
+    };
+  };
   // A timestamp for when the user was created, useful for sorting.
   createdAt: number; 
 };
@@ -53,3 +59,4 @@ export type Notification = {
   isRead: boolean;
   createdAt: number;
 };
+

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
@@ -28,7 +29,7 @@ interface AppState extends CategoryData {
 }
 
 interface AppContextType extends AppState {
-  addUser: (user: User) => Promise<void>;
+  addUser: (user: User, isNewUser: boolean) => Promise<void>;
   updateUser: (userId: string, data: Partial<User>) => Promise<void>;
   deleteUser: (userId: string) => Promise<void>;
   canDeleteUser: (userToDelete: User) => boolean;
@@ -294,7 +295,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await updateDoc(userDocRef, cleanedData);
     
     // If role has changed, send a notification
-    if (newRole !== originalRole) {
+    if (data.role && newRole !== originalRole) {
       let message = `Your role has been set to ${roleToLabel(newRole)}.`;
       if (newRole === 'executive' && data.teams && data.teams.length > 0) {
         message += ` You can now manage the following teams: ${data.teams.join(', ')}.`;
@@ -406,14 +407,34 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [currentUser]);
 
-  const addUser = async (user: User) => {
+  const addUser = async (user: User, isNewUser: boolean) => {
     try {
-      const userDoc = doc(db, 'users', user.id);
+      const userDocRef = doc(db, 'users', user.id);
       const userWithTimestamp = {
           ...user,
           createdAt: user.createdAt || Date.now(),
       }
-      await setDoc(userDoc, userWithTimestamp);
+      await setDoc(userDocRef, userWithTimestamp);
+
+      if (isNewUser) {
+        const allAdmins = state.users.filter(u => u.role && u.role !== 'none');
+        const notificationPromises: Promise<void>[] = [];
+
+        for (const admin of allAdmins) {
+            const prefs = admin.notificationPreferences?.onUserJoin;
+            if (!prefs) continue;
+
+            const isTeamMatch = prefs.teams.includes(user.team) && !user.subTeam;
+            const isSubTeamMatch = user.subTeam && prefs.subTeams.includes(user.subTeam);
+
+            if (isTeamMatch || isSubTeamMatch) {
+                const message = `${user.name} has just joined ${isSubTeamMatch ? `${user.team} > ${user.subTeam}` : user.team}.`;
+                notificationPromises.push(addNotification(admin.id, "New User Joined Team", message));
+            }
+        }
+        await Promise.all(notificationPromises);
+      }
+
     } catch (error) {
       console.error("Error adding user:", error);
       throw error;

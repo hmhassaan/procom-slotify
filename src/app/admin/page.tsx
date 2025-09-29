@@ -1,9 +1,10 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
 import * as xlsx from "xlsx";
-import { FileUp, Loader2, AlertCircle, Users, Trash2, Tag, PlusCircle, Building2, Briefcase, UserCog, Shield, ShieldCheck, ShieldAlert, Crown, GripVertical, Pencil, Users2, Clock } from "lucide-react";
+import { FileUp, Loader2, AlertCircle, Users, Trash2, Tag, PlusCircle, Building2, Briefcase, UserCog, Shield, ShieldCheck, ShieldAlert, Crown, GripVertical, Pencil, Users2, Clock, BellRing } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -362,6 +363,92 @@ const CategoryManager = () => {
       </Dialog>
     </Card>
   );
+};
+
+
+const NotificationManager = () => {
+    const { currentUserProfile, teams, subTeams, updateUser, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin } = useAppContext();
+    const { toast } = useToast();
+    
+    const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+    const [selectedSubTeams, setSelectedSubTeams] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (currentUserProfile) {
+            setSelectedTeams(currentUserProfile.notificationPreferences?.onUserJoin?.teams || []);
+            setSelectedSubTeams(currentUserProfile.notificationPreferences?.onUserJoin?.subTeams || []);
+        }
+    }, [currentUserProfile]);
+
+    const manageableTeams = useMemo(() => {
+        if (isUniversalAdmin) return teams;
+        if (isExecutiveAdmin) return currentUserProfile?.teams || [];
+        if (isTeamAdmin) return currentUserProfile?.team ? [currentUserProfile.team] : [];
+        return [];
+    }, [teams, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, currentUserProfile]);
+
+    const manageableSubTeams = useMemo(() => {
+        const teamsToConsider = selectedTeams.length > 0 ? selectedTeams : manageableTeams;
+        return Object.entries(subTeams)
+            .filter(([team]) => teamsToConsider.includes(team))
+            .flatMap(([, subs]) => subs);
+    }, [subTeams, manageableTeams, selectedTeams]);
+
+    const handleSave = async () => {
+        if (!currentUserProfile) return;
+        try {
+            await updateUser(currentUserProfile.id, {
+                notificationPreferences: {
+                    onUserJoin: {
+                        teams: selectedTeams,
+                        subTeams: selectedSubTeams,
+                    }
+                }
+            });
+            toast({ title: "Success", description: "Notification preferences updated." });
+        } catch (error) {
+            toast({ variant: "destructive", title: "Error", description: "Could not update preferences." });
+        }
+    };
+
+    return (
+        <Card className="lg:col-span-1">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <BellRing className="w-6 h-6" />
+                    Notification Manager
+                </CardTitle>
+                <CardDescription>
+                    Get notified when a new user joins a team or sub-team you manage.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="space-y-2">
+                    <Label>Notify on join to Team</Label>
+                    <MultiSelect
+                        options={manageableTeams}
+                        selected={selectedTeams}
+                        onChange={setSelectedTeams}
+                        placeholder="Select teams..."
+                        disabled={manageableTeams.length === 0}
+                    />
+                     <p className="text-xs text-muted-foreground">Receive a notification if a user joins one of these teams (and does not have a sub-team).</p>
+                </div>
+                 <div className="space-y-2">
+                    <Label>Notify on join to Sub-team</Label>
+                    <MultiSelect
+                        options={manageableSubTeams}
+                        selected={selectedSubTeams}
+                        onChange={setSelectedSubTeams}
+                        placeholder="Select sub-teams..."
+                        disabled={manageableSubTeams.length === 0}
+                    />
+                    <p className="text-xs text-muted-foreground">Receive a notification if a user joins one of these sub-teams.</p>
+                </div>
+                <Button onClick={handleSave} className="w-full">Save Preferences</Button>
+            </CardContent>
+        </Card>
+    );
 };
 
 
@@ -832,8 +919,11 @@ export default function AdminPage() {
           Admin Panel
         </h1>
       </header>
-
-      {(isUniversalAdmin || isExecutiveAdmin) && <CategoryManager />}
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+        {(isUniversalAdmin || isExecutiveAdmin) && <CategoryManager />}
+        <NotificationManager />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {isUniversalAdmin && (
@@ -962,4 +1052,3 @@ export default function AdminPage() {
   );
 }
 
-    

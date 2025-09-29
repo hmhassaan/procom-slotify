@@ -1,4 +1,5 @@
 
+
 "use client";
 
 
@@ -155,10 +156,12 @@ export default function AddSchedulePage() {
 
     let finalRole = role;
     let finalExecutiveTeams = currentUserProfile?.teams;
+    let finalNotificationPreferences = currentUserProfile?.notificationPreferences;
 
     if (hasAdminRole && (teamChanged || subTeamChanged)) {
       finalRole = 'none';
       finalExecutiveTeams = []; // Clear executive teams as well
+      finalNotificationPreferences = { onUserJoin: { teams: [], subTeams: [] } };
     }
 
     const userData: User = {
@@ -176,11 +179,12 @@ export default function AddSchedulePage() {
         subTeams: visibleToSubTeams,
       },
       role: finalRole,
+      notificationPreferences: finalNotificationPreferences,
       ...(finalRole === 'executive' && finalExecutiveTeams && { teams: finalExecutiveTeams }),
       createdAt: currentUserProfile?.createdAt || Date.now(),
     };
     
-    await addUser(userData); // addUser is actually a setDoc, so it works for create and update
+    await addUser(userData, !isEditing); // addUser is actually a setDoc, so it works for create and update
     toast({ title: isEditing ? "Schedule Updated" : "Schedule Added", description: `Your schedule has been ${isEditing ? 'updated' : 'saved'}.` });
     if(hasAdminRole && (teamChanged || subTeamChanged)) {
       toast({ variant: "destructive", title: "Admin Access Revoked", description: "Your administrative role has been removed because you changed your team/sub-team." });
