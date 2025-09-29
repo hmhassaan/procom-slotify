@@ -8,16 +8,16 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, X, Clock, User, Calendar, Users, HelpCircle, Trash2, Send } from "lucide-react";
+import { Check, X, Calendar, User, Users, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { Meeting, MeetingAttendee, MeetingAttendeeStatus, User as AppUser } from "@/app/types";
+import type { Meeting, MeetingAttendeeStatus } from "@/app/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipProvider, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: Meeting, isOrganizer: boolean, onRespond: (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => void, onDelete: (meetingId: string) => void }) => {
   const { currentUserProfile } = useAppContext();

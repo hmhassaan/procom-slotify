@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -51,7 +52,7 @@ type SlotInfo = {
 };
 
 const useViewSchedule = () => {
-    const { users, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, canViewUser } = useAppContext();
+    const { users, currentUserProfile, canViewUser } = useAppContext();
     const [teamFilters, setTeamFilters] = useState<string[]>([]);
     const [positionFilters, setPositionFilters] = useState<string[]>([]);
     const [subTeamFilters, setSubTeamFilters] = useState<string[]>([]);
