@@ -223,6 +223,10 @@ const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: M
   const [isDeclineDialogOpen, setIsDeclineDialogOpen] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
   
+  if (!meeting.date) {
+    return null; // Don't render if meeting date is invalid
+  }
+  
   const currentUserAttendee = meeting.attendees.find(a => a.userId === currentUserProfile?.id);
   const currentUserStatus = isOrganizer ? 'organizer' : currentUserAttendee?.status;
   
@@ -337,6 +341,7 @@ export default function MeetingsPage() {
     if (!currentUserProfile) return { allMeetings: [], organizedMeetings: [], invitedMeetings: [], pendingInvites: [] };
     
     const sortFn = (a: Meeting, b: Meeting) => {
+        if (!a.date || !b.date) return 0;
         const dateCompare = a.date - b.date;
         if (dateCompare !== 0) return dateCompare;
         return a.time.localeCompare(b.time);
@@ -432,3 +437,5 @@ export default function MeetingsPage() {
     </div>
   );
 }
+
+    
