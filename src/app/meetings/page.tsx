@@ -9,16 +9,122 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, X, Calendar, User, Users, Trash2 } from "lucide-react";
+import { Check, X, Calendar, User, Users, Trash2, CalendarPlus, Checkbox } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { Meeting, MeetingAttendeeStatus } from "@/app/types";
+import type { Meeting, MeetingAttendeeStatus, User as AppUser } from "@/app/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipProvider, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+
+const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+
+const ScheduleMeetingFromMeetingsPage = () => {
+    const { users, currentUserProfile, createMeeting, canViewUser, teams, subTeams, positions, timeSlots, meetings } = useAppContext();
+    const { toast } = useToast();
+    const [isOpen, setIsOpen] = useState(false);
+    const [meetingTitle, setMeetingTitle] = useState("");
+    const [selectedDay, setSelectedDay] = useState("");
+    const [selectedTime, setSelectedTime] = useState("");
+    const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  
+    useEffect(() => {
+        if (isOpen) {
+            setMeetingTitle("");
+            setSelectedUserIds([]);
+            setSelectedDay("");
+            setSelectedTime("");
+        }
+    }, [isOpen]);
+  
+    const handleCreateMeeting = async () => {
+        if (!meetingTitle.trim()) { toast({ variant: "destructive", title: "Title is required" }); return; }
+        if (!selectedDay || !selectedTime) { toast({ variant: "destructive", title: "Slot is required" }); return; }
+        if (selectedUserIds.length === 0) { toast({ variant: "destructive", title: "Select at least one member" }); return; }
+        if (!currentUserProfile) return;
+  
+        try {
+            await createMeeting({ title: meetingTitle, day: selectedDay, time: selectedTime, attendeeIds: selectedUserIds });
+            toast({ title: "Meeting Scheduled", description: "Invitations have been sent." });
+            setIsOpen(false);
+        } catch (e) {
+            console.error(e);
+            toast({ variant: "destructive", title: "Error", description: "Could not schedule meeting." });
+        }
+    };
+  
+    const allInvitableUsers = useMemo(() => users.filter(u => canViewUser(u) && u.id !== currentUserProfile?.id), [users, canViewUser, currentUserProfile]);
+  
+    const handleGroupSelection = (ids: string[], isChecked: boolean) => {
+        setSelectedUserIds(prev => {
+            const idSet = new Set(prev);
+            ids.forEach(id => {
+                if (isChecked) idSet.add(id);
+                else idSet.delete(id);
+            });
+            return Array.from(idSet);
+        });
+    };
+  
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+                <Button><CalendarPlus className="mr-2"/>Schedule Meeting</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Schedule a New Meeting</DialogTitle>
+                    <DialogDescription>Choose a title, slot, and invite members.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                    <Input id="meeting-title" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} placeholder="Meeting Title" />
+                    <div className="grid grid-cols-2 gap-4">
+                        <Select value={selectedDay} onValueChange={setSelectedDay}>
+                            <SelectTrigger><SelectValue placeholder="Select Day"/></SelectTrigger>
+                            <SelectContent>
+                                {weekdays.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                        <Select value={selectedTime} onValueChange={setSelectedTime} disabled={!selectedDay}>
+                            <SelectTrigger><SelectValue placeholder="Select Time"/></SelectTrigger>
+                            <SelectContent>
+                                {timeSlots.map(time => <SelectItem key={time} value={time}>{time}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                            <Label>Invite Members</Label>
+                            <div>
+                                <Button variant="link" size="sm" onClick={() => handleGroupSelection(allInvitableUsers.map(u => u.id), true)}>Select All</Button>
+                                <Button variant="link" size="sm" onClick={() => handleGroupSelection(allInvitableUsers.map(u => u.id), false)}>Deselect All</Button>
+                            </div>
+                        </div>
+                        <ScrollArea className="h-60 border rounded-md p-4">
+                            {allInvitableUsers.map(user => (
+                                <div key={user.id} className="flex items-center gap-2">
+                                    <Checkbox id={`invite-${user.id}`} checked={selectedUserIds.includes(user.id)} onCheckedChange={(checked) => handleGroupSelection([user.id], !!checked)} />
+                                    <Label htmlFor={`invite-${user.id}`}>{user.name} - {user.position}</Label>
+                                </div>
+                            ))}
+                        </ScrollArea>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
+                    <Button onClick={handleCreateMeeting}>Create Meeting & Notify</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: Meeting, isOrganizer: boolean, onRespond: (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => void, onDelete: (meetingId: string) => void }) => {
   const { currentUserProfile } = useAppContext();
@@ -65,11 +171,12 @@ const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: M
                                 <AvatarFallback>{attendee.name.charAt(0)}</AvatarFallback>
                                 </Avatar>
                                 <span className="text-sm">{attendee.name}</span>
-                                {getStatusBadge(attendee.status)}
+                                {isOrganizer && getStatusBadge(attendee.status)}
                            </div>
                         </TooltipTrigger>
                          <TooltipContent>
-                           {attendee.status === 'declined' && attendee.responseReason ? <p>Reason: {attendee.responseReason}</p> : <p>Status: {attendee.status}</p>}
+                           {isOrganizer && attendee.status === 'declined' && attendee.responseReason ? <p>Reason: {attendee.responseReason}</p> : <p>Status: {attendee.status}</p>}
+                           {!isOrganizer && <p>{attendee.name}</p>}
                         </TooltipContent>
                     </Tooltip>
                  </TooltipProvider>
@@ -122,7 +229,7 @@ const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: M
 
 
 export default function MeetingsPage() {
-  const { meetings, currentUserProfile, loading, respondToMeeting, deleteMeeting } = useAppContext();
+  const { meetings, currentUserProfile, loading, respondToMeeting, deleteMeeting, hasAdminPrivileges } = useAppContext();
   const { currentUser, loading: authLoading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
@@ -136,12 +243,28 @@ export default function MeetingsPage() {
   const { allMeetings, organizedMeetings, invitedMeetings, pendingInvites } = useMemo(() => {
     if (!currentUserProfile) return { allMeetings: [], organizedMeetings: [], invitedMeetings: [], pendingInvites: [] };
     
+    const dayOrder = weekdays.reduce((acc, day, index) => {
+        acc[day] = index;
+        return acc;
+    }, {} as Record<string, number>);
+
+    const sortFn = (a: Meeting, b: Meeting) => {
+        const dayCompare = dayOrder[a.day] - dayOrder[b.day];
+        if (dayCompare !== 0) return dayCompare;
+        return a.time.localeCompare(b.time);
+    };
+
     const organized = meetings.filter(m => m.organizerId === currentUserProfile.id);
     const invited = meetings.filter(m => m.organizerId !== currentUserProfile.id && m.attendees.some(a => a.userId === currentUserProfile.id));
-    const all = [...organized, ...invited].sort((a,b) => b.createdAt - a.createdAt);
+    const all = [...organized, ...invited].sort(sortFn);
     const pending = invited.filter(m => m.attendees.find(a => a.userId === currentUserProfile.id)?.status === 'pending');
     
-    return { allMeetings: all, organizedMeetings: organized, invitedMeetings: invited, pendingInvites: pending };
+    return { 
+        allMeetings: all, 
+        organizedMeetings: organized.sort(sortFn), 
+        invitedMeetings: invited.sort(sortFn), 
+        pendingInvites: pending 
+    };
   }, [meetings, currentUserProfile]);
   
   const handleRespond = async (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => {
@@ -170,9 +293,12 @@ export default function MeetingsPage() {
 
   return (
     <div className="container mx-auto p-4 md:p-8">
-      <header className="mb-8">
-        <h1 className="text-4xl font-bold tracking-tight">My Meetings</h1>
-        <p className="text-muted-foreground mt-2">Manage your scheduled meetings and invitations.</p>
+      <header className="mb-8 flex justify-between items-center">
+        <div>
+            <h1 className="text-4xl font-bold tracking-tight">My Meetings</h1>
+            <p className="text-muted-foreground mt-2">Manage your scheduled meetings and invitations.</p>
+        </div>
+        {hasAdminPrivileges && <ScheduleMeetingFromMeetingsPage />}
       </header>
       
       <Tabs defaultValue="all">
