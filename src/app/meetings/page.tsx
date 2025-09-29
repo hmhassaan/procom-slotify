@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -132,14 +133,15 @@ export default function MeetingsPage() {
     }
   }, [currentUser, authLoading, router]);
 
-  const { organizedMeetings, invitedMeetings, pendingInvites } = useMemo(() => {
-    if (!currentUserProfile) return { organizedMeetings: [], invitedMeetings: [], pendingInvites: [] };
+  const { allMeetings, organizedMeetings, invitedMeetings, pendingInvites } = useMemo(() => {
+    if (!currentUserProfile) return { allMeetings: [], organizedMeetings: [], invitedMeetings: [], pendingInvites: [] };
     
     const organized = meetings.filter(m => m.organizerId === currentUserProfile.id);
     const invited = meetings.filter(m => m.organizerId !== currentUserProfile.id && m.attendees.some(a => a.userId === currentUserProfile.id));
+    const all = [...organized, ...invited].sort((a,b) => b.createdAt - a.createdAt);
     const pending = invited.filter(m => m.attendees.find(a => a.userId === currentUserProfile.id)?.status === 'pending');
     
-    return { organizedMeetings: organized, invitedMeetings: invited, pendingInvites: pending };
+    return { allMeetings: all, organizedMeetings: organized, invitedMeetings: invited, pendingInvites: pending };
   }, [meetings, currentUserProfile]);
   
   const handleRespond = async (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => {
@@ -173,14 +175,25 @@ export default function MeetingsPage() {
         <p className="text-muted-foreground mt-2">Manage your scheduled meetings and invitations.</p>
       </header>
       
-      <Tabs defaultValue="invitations">
+      <Tabs defaultValue="all">
         <TabsList>
+          <TabsTrigger value="all">All Meetings</TabsTrigger>
           <TabsTrigger value="invitations">
             Meeting Invitations
             {pendingInvites.length > 0 && <Badge className="ml-2">{pendingInvites.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="organized">Organized by Me</TabsTrigger>
         </TabsList>
+        <TabsContent value="all" className="space-y-4 pt-4">
+          {allMeetings.length > 0 ? (
+            allMeetings.map(m => <MeetingCard key={m.id} meeting={m} isOrganizer={m.organizerId === currentUserProfile?.id} onRespond={handleRespond} onDelete={handleDelete} />)
+          ) : (
+            <div className="text-center py-20 text-muted-foreground border rounded-lg">
+                <p className="text-lg font-medium">No meetings yet</p>
+                <p>You haven't been invited to or organized any meetings.</p>
+            </div>
+          )}
+        </TabsContent>
         <TabsContent value="invitations" className="space-y-4 pt-4">
           {invitedMeetings.length > 0 ? (
             invitedMeetings.map(m => <MeetingCard key={m.id} meeting={m} isOrganizer={false} onRespond={handleRespond} onDelete={handleDelete} />)

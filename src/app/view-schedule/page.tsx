@@ -81,8 +81,12 @@ const useViewSchedule = () => {
         }
 
         const finalUserSet = new Set(filteredSet);
-        const self = users.find(u => u.id === currentUserProfile.id);
-        if (self) finalUserSet.add(self);
+        // Always include self, if they have a profile
+        if (currentUserProfile) {
+            const self = users.find(u => u.id === currentUserProfile.id);
+            if (self) finalUserSet.add(self);
+        }
+
 
         return Array.from(finalUserSet);
     }, [users, teamFilters, positionFilters, subTeamFilters, advancedFilterGroups, currentUserProfile, canViewUser]);
@@ -97,14 +101,13 @@ const useViewSchedule = () => {
 };
 
 
-const ScheduleMeetingDialog = ({ day, time }: { day: string, time: string }) => {
+const ScheduleMeetingDialog = ({ day, time, filteredUsers }: { day: string, time: string, filteredUsers: User[] }) => {
   const { users, currentUserProfile, createMeeting, canViewUser, teams, subTeams, positions } = useAppContext();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   
-  const { filteredUsers } = useViewSchedule();
   
   useEffect(() => {
     if (isOpen) {
@@ -173,6 +176,24 @@ const ScheduleMeetingDialog = ({ day, time }: { day: string, time: string }) => 
 
   }, [users, teams, subTeams, positions, canViewUser, currentUserProfile]);
 
+  const toggleSelection = (ids: string[], select: boolean) => {
+    setSelectedUserIds(prev => {
+        const idSet = new Set(prev);
+        ids.forEach(id => {
+            if (select) idSet.add(id);
+            else idSet.delete(id);
+        });
+        return Array.from(idSet);
+    });
+  };
+
+  const handleGroupSelection = (ids: string[]) => {
+      const allSelected = ids.every(id => selectedUserIds.includes(id));
+      toggleSelection(ids, !allSelected);
+  };
+  
+  const allInviteeIds = useMemo(() => inviteeListStructure.flatMap(t => [...t.usersInNoSubTeam.map(u => u.id), ...t.subTeams.flatMap(st => st.users.map(u => u.id))]), [inviteeListStructure]);
+
   if (!currentUserProfile) return null;
 
   return (
@@ -191,35 +212,63 @@ const ScheduleMeetingDialog = ({ day, time }: { day: string, time: string }) => 
             <Input id="meeting-title" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} />
           </div>
           <div>
-            <Label>Invite Members</Label>
+            <div className="flex justify-between items-center mb-2">
+                <Label>Invite Members</Label>
+                <div className="flex gap-2">
+                    <Button variant="link" size="sm" onClick={() => toggleSelection(allInviteeIds, true)}>Select All</Button>
+                    <Button variant="link" size="sm" onClick={() => toggleSelection(allInviteeIds, false)}>Deselect All</Button>
+                </div>
+            </div>
             <ScrollArea className="h-60 border rounded-md p-4">
               <div className="space-y-4">
-                {inviteeListStructure.map(team => (
-                  <div key={team.name}>
-                    <h3 className="font-semibold text-sm border-b mb-2 pb-1">{team.name}</h3>
-                    <div className="space-y-2">
-                       {team.usersInNoSubTeam.map(user => (
-                          <div key={user.id} className="flex items-center gap-2">
-                            <Checkbox id={`invite-${user.id}`} checked={selectedUserIds.includes(user.id)} onCheckedChange={(checked) => setSelectedUserIds(prev => checked ? [...prev, user.id] : prev.filter(id => id !== user.id))} />
-                            <Label htmlFor={`invite-${user.id}`}>{user.name} - {user.position}</Label>
-                          </div>
-                        ))}
-                       {team.subTeams.map(subTeam => (
-                          <div key={subTeam.name} className="pl-4 pt-2">
-                              <h4 className="font-medium text-xs text-muted-foreground mb-1">{subTeam.name}</h4>
-                              <div className="space-y-2">
-                                  {subTeam.users.map(user => (
-                                      <div key={user.id} className="flex items-center gap-2">
-                                          <Checkbox id={`invite-${user.id}`} checked={selectedUserIds.includes(user.id)} onCheckedChange={(checked) => setSelectedUserIds(prev => checked ? [...prev, user.id] : prev.filter(id => id !== user.id))} />
-                                          <Label htmlFor={`invite-${user.id}`}>{user.name} - {user.position}</Label>
-                                      </div>
-                                  ))}
-                              </div>
-                          </div>
-                       ))}
+                {inviteeListStructure.map(team => {
+                  const teamUserIds = team.usersInNoSubTeam.map(u => u.id);
+                  const areAllTeamUsersSelected = team.usersInNoSubTeam.length > 0 && teamUserIds.every(id => selectedUserIds.includes(id));
+                  return (
+                    <div key={team.name}>
+                        <div className="flex items-center gap-2 font-semibold text-sm border-b mb-2 pb-1">
+                            <Checkbox id={`select-team-${team.name}`} 
+                                checked={areAllTeamUsersSelected} 
+                                onCheckedChange={() => handleGroupSelection(teamUserIds)}
+                                disabled={team.usersInNoSubTeam.length === 0}
+                            />
+                            <Label htmlFor={`select-team-${team.name}`}>{team.name}</Label>
+                        </div>
+                      <div className="space-y-2">
+                         {team.usersInNoSubTeam.map(user => (
+                            <div key={user.id} className="flex items-center gap-2 ml-4">
+                              <Checkbox id={`invite-${user.id}`} checked={selectedUserIds.includes(user.id)} onCheckedChange={(checked) => toggleSelection([user.id], !!checked)} />
+                              <Label htmlFor={`invite-${user.id}`}>{user.name} - {user.position}</Label>
+                            </div>
+                          ))}
+                         {team.subTeams.map(subTeam => {
+                             const subTeamUserIds = subTeam.users.map(u => u.id);
+                             const areAllSubTeamUsersSelected = subTeam.users.length > 0 && subTeamUserIds.every(id => selectedUserIds.includes(id));
+                            return (
+                                <div key={subTeam.name} className="pl-4 pt-2">
+                                    <div className="flex items-center gap-2 font-medium text-xs text-muted-foreground mb-1">
+                                        <Checkbox id={`select-subteam-${subTeam.name}`} 
+                                            checked={areAllSubTeamUsersSelected} 
+                                            onCheckedChange={() => handleGroupSelection(subTeamUserIds)}
+                                            disabled={subTeam.users.length === 0}
+                                        />
+                                        <Label htmlFor={`select-subteam-${subTeam.name}`}>{subTeam.name}</Label>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {subTeam.users.map(user => (
+                                            <div key={user.id} className="flex items-center gap-2 ml-4">
+                                                <Checkbox id={`invite-${user.id}`} checked={selectedUserIds.includes(user.id)} onCheckedChange={(checked) => toggleSelection([user.id], !!checked)} />
+                                                <Label htmlFor={`invite-${user.id}`}>{user.name} - {user.position}</Label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                             )
+                         })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </ScrollArea>
           </div>
@@ -234,7 +283,7 @@ const ScheduleMeetingDialog = ({ day, time }: { day: string, time: string }) => 
 };
 
 export default function ViewSchedulePage() {
-  const { users, timeSlots, slotCourses, loading, teams, positions, subTeams, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges, meetings, canViewUser } = useAppContext();
+  const { users, timeSlots, slotCourses, loading, teams, positions, subTeams, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges, meetings } = useAppContext();
   const { teamFilters, setTeamFilters, positionFilters, setPositionFilters, subTeamFilters, setSubTeamFilters, advancedFilterGroups, setAdvancedFilterGroups, filteredUsers } = useViewSchedule();
   
   const [nextGroupId, setNextGroupId] = useState(1);
@@ -537,7 +586,7 @@ export default function ViewSchedulePage() {
                                  </div>
                               </div>
                             </div>
-                             {hasAdminPrivileges && <div className="p-3 border-t"><ScheduleMeetingDialog day={day} time={time} /></div>}
+                             {hasAdminPrivileges && <div className="p-3 border-t"><ScheduleMeetingDialog day={day} time={time} filteredUsers={filteredUsers} /></div>}
                           </div>
                         )})}
                       </div>
