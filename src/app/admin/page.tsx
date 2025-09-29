@@ -676,13 +676,13 @@ const UserListItem = ({ user, onUpdate }: { user: User; onUpdate: () => void; })
                 <AlertDialogHeader>
                     <AlertDialogTitle>Delete {user.name}?</AlertDialogTitle>
                     <AlertDialogDescription>
-                    This action cannot be undone. Are you sure you want to delete this user?
+                    This action cannot be undone. This will move the user to a 'deletedUsers' collection for audit purposes but they will be removed from the app. Are you sure?
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction onClick={async () => {
-                    await deleteUser(user.id);
+                    await deleteUser(user);
                     toast({ title: "User Deleted", description: `${user.name} has been removed.` });
                     }}>
                     Delete
@@ -706,7 +706,7 @@ const getRoleIcon = (role?: UserRole) => {
 };
 
 export default function AdminPage() {
-  const { teams, users, positions, subTeams, setScheduleData, clearAllUsers, loading, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, hasAdminPrivileges } = useAppContext();
+  const { teams, users, positions, subTeams, setScheduleData, loading, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, hasAdminPrivileges } = useAppContext();
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -970,32 +970,6 @@ export default function AdminPage() {
                 <Users className="w-6 h-6" />
                 Manage Users
               </div>
-              {isUniversalAdmin && (
-                <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                    <Button variant="destructive" size="sm" disabled={users.length === 0}>
-                        <Trash2 className="mr-2 h-4 w-4" /> Clear All
-                    </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                        This will permanently delete all users. This action cannot be undone.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={async () => {
-                        await clearAllUsers();
-                        toast({ title: "Success", description: "All users have been deleted." });
-                        }}>
-                        Continue
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-              )}
             </CardTitle>
             <CardDescription>View, manage, and assign roles to users in the system.</CardDescription>
           </CardHeader>
@@ -1051,4 +1025,3 @@ export default function AdminPage() {
     </div>
   );
 }
-

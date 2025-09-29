@@ -23,6 +23,7 @@ interface AppState extends CategoryData {
   currentUserProfile: User | null;
   isUniversalAdmin: boolean;
   isExecutiveAdmin: boolean;
+
   isTeamAdmin: boolean;
   isSubTeamAdmin: boolean;
   hasAdminPrivileges: boolean;
@@ -31,10 +32,9 @@ interface AppState extends CategoryData {
 interface AppContextType extends AppState {
   addUser: (user: User, isNewUser: boolean) => Promise<void>;
   updateUser: (userId: string, data: Partial<User>) => Promise<void>;
-  deleteUser: (userId: string) => Promise<void>;
+  deleteUser: (userToDelete: User) => Promise<void>;
   canDeleteUser: (userToDelete: User) => boolean;
   canEditUser: (userToEdit: User) => boolean;
-  clearAllUsers: () => Promise<void>;
   setScheduleData: (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => Promise<void>;
   updateCategories: (categories: CategoryData) => Promise<void>;
   updateTeamName: (oldName: string, newName: string) => Promise<void>;
@@ -310,11 +310,15 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const cleanedData = Object.fromEntries(
       Object.entries(data).filter(([, value]) => value !== undefined)
     );
+    
+    const hasTeamChanged = data.team !== undefined && data.team !== originalUserData.team;
+    const hasSubTeamChanged = data.subTeam !== undefined && data.subTeam !== originalUserData.subTeam;
+
     await updateDoc(userDocRef, cleanedData);
 
     const updatedUser = { ...originalUserData, ...cleanedData };
 
-    if (data.team !== originalUserData.team || data.subTeam !== originalUserData.subTeam) {
+    if (hasTeamChanged || hasSubTeamChanged) {
         await handleUserTeamChange(updatedUser);
     }
     
@@ -458,42 +462,36 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const deleteUser = async (userId: string) => {
+  const deleteUser = async (userToDelete: User) => {
+    if (!currentUserProfile) {
+        throw new Error("Cannot delete user: current user profile not available.");
+    }
     try {
-      const userDoc = doc(db, 'users', userId);
-      await deleteDoc(userDoc);
-      
-      // Also delete their subscriptions subcollection
-      const subscriptionsCollection = collection(db, 'users', userId, 'subscriptions');
-      const subsSnapshot = await getDocs(subscriptionsCollection);
-      const batch = writeBatch(db);
-      subsSnapshot.forEach(subDoc => {
-          batch.delete(subDoc.ref);
-      });
-      await batch.commit();
+        const deletedUserDocRef = doc(db, 'deletedUsers', userToDelete.id);
+        const userDocRef = doc(db, 'users', userToDelete.id);
+
+        const deletedRecord = {
+            ...userToDelete,
+            deletedAt: Date.now(),
+            deletedBy: currentUserProfile.id,
+            deletedByName: currentUserProfile.name,
+        };
+
+        // Move to deletedUsers and then delete from users
+        await setDoc(deletedUserDocRef, deletedRecord);
+        await deleteDoc(userDocRef);
+
+        // Also delete their subscriptions subcollection
+        const subscriptionsCollection = collection(db, 'users', userToDelete.id, 'subscriptions');
+        const subsSnapshot = await getDocs(subscriptionsCollection);
+        const batch = writeBatch(db);
+        subsSnapshot.forEach(subDoc => {
+            batch.delete(subDoc.ref);
+        });
+        await batch.commit();
 
     } catch (error) {
-      console.error("Error deleting user:", error);
-    }
-  };
-  
-  const clearAllUsers = async () => {
-    try {
-      const usersCollection = collection(db, 'users');
-      const usersSnapshot = await getDocs(usersCollection);
-      const batch = writeBatch(db);
-      
-      for (const userDoc of usersSnapshot.docs) {
-          batch.delete(userDoc.ref);
-          // Delete subscriptions for each user
-          const subsCollection = collection(db, 'users', userDoc.id, 'subscriptions');
-          const subsSnapshot = await getDocs(subsCollection);
-          subsSnapshot.forEach(subDoc => batch.delete(subDoc.ref));
-      }
-      
-      await batch.commit();
-    } catch (error) {
-      console.error("Error clearing all users:", error);
+        console.error("Error deleting user:", error);
     }
   };
   
@@ -511,7 +509,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       deleteUser,
       canDeleteUser,
       canEditUser,
-      clearAllUsers,
       setScheduleData,
       updateCategories,
       updateTeamName,
@@ -536,8 +533,3 @@ export const useAppContext = () => {
   }
   return context;
 };
-
-    
-
-
-    
