@@ -3,3 +3,4 @@
 import './flows/notify-flow';
 import './flows/timetable-update-flow';
 import './flows/google-auth-flow';
+import './flows/create-calendar-event-flow';

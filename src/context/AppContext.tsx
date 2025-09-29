@@ -9,6 +9,7 @@ import type { User, CategoryData, UserRole, Position, Notification, Meeting, Mee
 import { useAuth } from './AuthContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { format } from 'date-fns';
+import { createCalendarEventFlow } from '@/ai/flows/create-calendar-event-flow';
 
 export type { User, CategoryData, UserRole, Position, Notification, Meeting };
 export type SlotCoursesIndex = Record<string, Record<string, string[]>>;
@@ -280,29 +281,53 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   
   const createMeeting = useCallback(async (meetingData: { title: string; date: number; time: string; attendeeIds: string[] }) => {
     if (!currentUserProfile) throw new Error("User not authenticated");
-    
-    const attendees: MeetingAttendee[] = meetingData.attendeeIds.map(id => {
-      const user = state.users.find(u => u.id === id);
-      return { userId: id, name: user?.name || 'Unknown User', status: 'pending' };
+
+    const allInvitedUserIds = [...new Set([currentUserProfile.id, ...meetingData.attendeeIds])];
+
+    const attendees: MeetingAttendee[] = allInvitedUserIds.map(id => {
+        const user = state.users.find(u => u.id === id);
+        const status: MeetingAttendeeStatus = id === currentUserProfile.id ? 'accepted' : 'pending';
+        return { userId: id, name: user?.name || 'Unknown User', status };
     });
-    
+
     const newMeeting: Omit<Meeting, 'id'> = {
-      title: meetingData.title,
-      date: meetingData.date,
-      time: meetingData.time,
-      organizerId: currentUserProfile.id,
-      organizerName: currentUserProfile.name,
-      attendees,
-      createdAt: Date.now()
+        title: meetingData.title,
+        date: meetingData.date,
+        time: meetingData.time,
+        organizerId: currentUserProfile.id,
+        organizerName: currentUserProfile.name,
+        attendees,
+        createdAt: Date.now()
     };
-    
+
     const meetingRef = await addDoc(collection(db, 'meetings'), newMeeting);
-    
-    const notificationPromises = attendees.map(attendee => 
-      addNotification(attendee.userId, "New Meeting Invitation", `You've been invited to "${meetingData.title}" by ${currentUserProfile.name} on ${format(new Date(meetingData.date), "EEE, MMM d")} at ${meetingData.time}.`, '/meetings')
+
+    // Send in-app notifications
+    const notificationPromises = meetingData.attendeeIds.map(attendeeId =>
+        addNotification(
+            attendeeId,
+            "New Meeting Invitation",
+            `You've been invited to "${meetingData.title}" by ${currentUserProfile.name} on ${format(new Date(meetingData.date), "EEE, MMM d")} at ${meetingData.time}.`,
+            '/meetings'
+        )
     );
     await Promise.all(notificationPromises);
-  }, [currentUserProfile, state.users, addNotification]);
+
+    // Trigger Google Calendar event creation flow
+    try {
+        await createCalendarEventFlow({
+            meetingId: meetingRef.id,
+            title: meetingData.title,
+            date: meetingData.date,
+            time: meetingData.time,
+            // Pass all users including organizer
+            attendeeIds: allInvitedUserIds
+        });
+    } catch (e) {
+        console.error("Failed to create Google Calendar event:", e);
+        // Don't throw, as the core meeting is already created. Maybe show a non-blocking toast.
+    }
+}, [currentUserProfile, state.users, addNotification]);
   
   const respondToMeeting = useCallback(async (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => {
     if (!currentUserProfile) throw new Error("User not authenticated");
