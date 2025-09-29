@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
-import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, getDoc, updateDoc, query, where, addDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, getDoc, updateDoc, query, where, addDoc, runTransaction } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User, CategoryData, UserRole, Position, Notification } from '@/app/types';
 import { useAuth } from './AuthContext';
@@ -36,6 +36,8 @@ interface AppContextType extends AppState {
   clearAllUsers: () => Promise<void>;
   setScheduleData: (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => Promise<void>;
   updateCategories: (categories: CategoryData) => Promise<void>;
+  updateTeamName: (oldName: string, newName: string) => Promise<void>;
+  updateSubTeamName: (parentTeam: string, oldName: string, newName: string) => Promise<void>;
   markNotificationsAsRead: () => Promise<void>;
   requestPushSubscription: () => Promise<void>;
   disablePushNotifications: () => Promise<void>;
@@ -213,6 +215,67 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const updateCategories = useCallback(async (categories: CategoryData) => {
     const categoryDoc = doc(db, 'schedule', 'categories');
     await setDoc(categoryDoc, categories);
+  }, []);
+
+  const updateTeamName = useCallback(async (oldName: string, newName: string) => {
+    await runTransaction(db, async (transaction) => {
+        const categoryDocRef = doc(db, 'schedule', 'categories');
+        const categoryDoc = await transaction.get(categoryDocRef);
+        if (!categoryDoc.exists()) throw new Error("Categories document does not exist!");
+        
+        const categories = categoryDoc.data() as CategoryData;
+        const teamIndex = categories.teams.indexOf(oldName);
+        if (teamIndex === -1) throw new Error("Team not found");
+
+        // Update team name in categories
+        const newTeams = [...categories.teams];
+        newTeams[teamIndex] = newName;
+        
+        const newSubTeams = { ...categories.subTeams };
+        if (newSubTeams[oldName]) {
+            newSubTeams[newName] = newSubTeams[oldName];
+            delete newSubTeams[oldName];
+        }
+
+        transaction.update(categoryDocRef, { teams: newTeams, subTeams: newSubTeams });
+
+        // Find users with the old team name and update them
+        const usersQuery = query(collection(db, "users"), where("team", "==", oldName));
+        const usersSnapshot = await getDocs(usersQuery);
+        
+        usersSnapshot.forEach(userDoc => {
+            transaction.update(userDoc.ref, { team: newName });
+        });
+    });
+  }, []);
+  
+  const updateSubTeamName = useCallback(async (parentTeam: string, oldName: string, newName: string) => {
+      await runTransaction(db, async (transaction) => {
+          const categoryDocRef = doc(db, 'schedule', 'categories');
+          const categoryDoc = await transaction.get(categoryDocRef);
+          if (!categoryDoc.exists()) throw new Error("Categories document does not exist!");
+          
+          const categories = categoryDoc.data() as CategoryData;
+          if (!categories.subTeams[parentTeam]) throw new Error("Parent team not found");
+
+          const subTeamIndex = categories.subTeams[parentTeam].indexOf(oldName);
+          if (subTeamIndex === -1) throw new Error("Sub-team not found");
+
+          // Update sub-team name in categories
+          const newSubTeamsForParent = [...categories.subTeams[parentTeam]];
+          newSubTeamsForParent[subTeamIndex] = newName;
+          const newSubTeams = { ...categories.subTeams, [parentTeam]: newSubTeamsForParent };
+          
+          transaction.update(categoryDocRef, { subTeams: newSubTeams });
+
+          // Find users with the old sub-team name and update them
+          const usersQuery = query(collection(db, "users"), where("team", "==", parentTeam), where("subTeam", "==", oldName));
+          const usersSnapshot = await getDocs(usersQuery);
+
+          usersSnapshot.forEach(userDoc => {
+              transaction.update(userDoc.ref, { subTeam: newName });
+          });
+      });
   }, []);
 
   const updateUser = useCallback(async (userId: string, data: Partial<User>) => {
@@ -413,6 +476,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       clearAllUsers,
       setScheduleData,
       updateCategories,
+      updateTeamName,
+      updateSubTeamName,
       markNotificationsAsRead,
       requestPushSubscription,
       disablePushNotifications,

@@ -37,7 +37,6 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import { notifyAllUsersOnScheduleUpdateFlow } from "@/ai/flows/timetable-update-flow";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -68,7 +67,7 @@ const SortablePositionItem = ({ position, onRemove, onEdit }: { position: Positi
 
 
 const CategoryManager = () => {
-  const { teams, positions, subTeams, updateCategories, loading, isUniversalAdmin, isExecutiveAdmin, currentUserProfile } = useAppContext();
+  const { teams, positions, subTeams, updateTeamName, updateSubTeamName, updateCategories, loading, isUniversalAdmin, isExecutiveAdmin, currentUserProfile } = useAppContext();
 
   const [newTeam, setNewTeam] = useState("");
   
@@ -79,6 +78,13 @@ const CategoryManager = () => {
 
   const [newSubTeam, setNewSubTeam] = useState("");
   const [parentTeam, setParentTeam] = useState("");
+
+  const [isTeamEditDialogOpen, setIsTeamEditDialogOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<{ oldName: string; newName: string } | null>(null);
+
+  const [isSubTeamEditDialogOpen, setIsSubTeamEditDialogOpen] = useState(false);
+  const [editingSubTeam, setEditingSubTeam] = useState<{ parentTeam: string; oldName: string; newName: string } | null>(null);
+
   const { toast } = useToast();
   
   const canManageTeams = isUniversalAdmin;
@@ -92,6 +98,31 @@ const CategoryManager = () => {
     setNewTeam("");
     toast({ title: "Success", description: "Team added." });
   };
+  
+  const handleEditTeam = async () => {
+    if (!editingTeam || !editingTeam.newName.trim() || !canManageTeams) return;
+    try {
+      await updateTeamName(editingTeam.oldName, editingTeam.newName.trim());
+      toast({ title: "Success", description: "Team name updated." });
+      setIsTeamEditDialogOpen(false);
+      setEditingTeam(null);
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error", description: "Could not update team name." });
+    }
+  };
+  
+  const handleEditSubTeam = async () => {
+    if (!editingSubTeam || !editingSubTeam.newName.trim() || !canManageSubTeams) return;
+    try {
+      await updateSubTeamName(editingSubTeam.parentTeam, editingSubTeam.oldName, editingSubTeam.newName.trim());
+      toast({ title: "Success", description: "Sub-team name updated." });
+      setIsSubTeamEditDialogOpen(false);
+      setEditingSubTeam(null);
+    } catch (e) {
+      toast({ variant: "destructive", title: "Error", description: "Could not update sub-team name." });
+    }
+  };
+
 
   const handleRemoveTeam = async (value: string) => {
     if (!canManageTeams) return;
@@ -207,7 +238,10 @@ const CategoryManager = () => {
               {teams.map(team => (
                 <Badge key={team} variant="secondary" className="flex justify-between items-center p-2">
                   <span>{team}</span>
-                  <button onClick={() => handleRemoveTeam(team)} disabled={!canManageTeams}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
+                  <div className="flex items-center">
+                    <button onClick={() => { setEditingTeam({ oldName: team, newName: team }); setIsTeamEditDialogOpen(true); }} disabled={!canManageTeams} className="p-1"><Pencil className="w-3 h-3 hover:text-primary" /></button>
+                    <button onClick={() => handleRemoveTeam(team)} disabled={!canManageTeams} className="p-1"><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
+                  </div>
                 </Badge>
               ))}
             </div>
@@ -255,7 +289,10 @@ const CategoryManager = () => {
                                 {subs.map(sub => (
                                     <Badge key={sub} variant="outline" className="flex justify-between items-center p-2 ml-2 mb-1">
                                         <span>{sub}</span>
-                                        <button onClick={() => handleRemoveSubTeam(sub, parent)} disabled={!canManageSubTeams}><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
+                                        <div className="flex items-center">
+                                            <button onClick={() => { setEditingSubTeam({ parentTeam: parent, oldName: sub, newName: sub }); setIsSubTeamEditDialogOpen(true); }} disabled={!canManageSubTeams} className="p-1"><Pencil className="w-3 h-3 hover:text-primary" /></button>
+                                            <button onClick={() => handleRemoveSubTeam(sub, parent)} disabled={!canManageSubTeams} className="p-1"><Trash2 className="w-3 h-3 hover:text-destructive" /></button>
+                                        </div>
                                     </Badge>
                                 ))}
                             </div>
@@ -284,6 +321,42 @@ const CategoryManager = () => {
               <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
               <Button onClick={handleSavePosition}>Save</Button>
             </DialogFooter>
+          </DialogContent>
+      </Dialog>
+      <Dialog open={isTeamEditDialogOpen} onOpenChange={setIsTeamEditDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Edit Team Name</DialogTitle>
+                <DialogDescription>This will update the team name for all associated users.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                    <Label htmlFor="team-name">New Team Name</Label>
+                    <Input id="team-name" value={editingTeam?.newName || ''} onChange={(e) => editingTeam && setEditingTeam({...editingTeam, newName: e.target.value})} />
+                </div>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                <Button onClick={handleEditTeam}>Save</Button>
+            </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isSubTeamEditDialogOpen} onOpenChange={setIsSubTeamEditDialogOpen}>
+          <DialogContent>
+              <DialogHeader>
+                  <DialogTitle>Edit Sub-team Name</DialogTitle>
+                  <DialogDescription>This will update the sub-team name for all associated users.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                      <Label htmlFor="subteam-name">New Sub-team Name</Label>
+                      <Input id="subteam-name" value={editingSubTeam?.newName || ''} onChange={(e) => editingSubTeam && setEditingSubTeam({...editingSubTeam, newName: e.target.value})} />
+                  </div>
+              </div>
+              <DialogFooter>
+                  <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                  <Button onClick={handleEditSubTeam}>Save</Button>
+              </DialogFooter>
           </DialogContent>
       </Dialog>
     </Card>
@@ -546,7 +619,7 @@ const getRoleIcon = (role?: UserRole) => {
 
 export default function AdminPage() {
   const { teams, users, positions, subTeams, setScheduleData, clearAllUsers, loading, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, hasAdminPrivileges } = useAppContext();
-  const [isUploading, setIsUploading] = useState(false);
+  const [isUploading, setIsUploading] = useState(isUploading);
   const [error, setError] = useState<string | null>(null);
 
   const { toast } = useToast();
@@ -887,3 +960,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+    
