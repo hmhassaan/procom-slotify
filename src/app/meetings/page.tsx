@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -9,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, X, Calendar, User, Users, Trash2, CalendarPlus, Checkbox } from "lucide-react";
+import { Check, X, Calendar, User, Users, Trash2, CalendarPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Meeting, MeetingAttendeeStatus, User as AppUser } from "@/app/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -22,6 +21,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -137,7 +137,7 @@ const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: M
   const handleDeclineSubmit = () => {
     onRespond(meeting.id, 'declined', declineReason);
     setIsDeclineDialogOpen(false);
-    setDeclineReason("");
+    setSetDeclineReason("");
   };
 
   const getStatusBadge = (status: MeetingAttendeeStatus) => {
@@ -344,3 +344,5 @@ export default function MeetingsPage() {
     </div>
   );
 }
+
+    
