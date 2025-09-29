@@ -5,11 +5,11 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from 'react';
 import { collection, doc, onSnapshot, setDoc, deleteDoc, writeBatch, getDocs, getDoc, updateDoc, query, where, addDoc, runTransaction } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import type { User, CategoryData, UserRole, Position, Notification } from '@/app/types';
+import type { User, CategoryData, UserRole, Position, Notification, Meeting, MeetingAttendeeStatus, MeetingAttendee } from '@/app/types';
 import { useAuth } from './AuthContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 
-export type { User, CategoryData, UserRole, Position, Notification };
+export type { User, CategoryData, UserRole, Position, Notification, Meeting };
 export type SlotCoursesIndex = Record<string, Record<string, string[]>>;
 export type Schedule = { [day: string]: { [time: string]: string | undefined }; };
 
@@ -19,11 +19,11 @@ interface AppState extends CategoryData {
   timeSlots: string[];
   slotCourses: SlotCoursesIndex;
   notifications: Notification[];
+  meetings: Meeting[];
   loading: boolean;
   currentUserProfile: User | null;
   isUniversalAdmin: boolean;
   isExecutiveAdmin: boolean;
-
   isTeamAdmin: boolean;
   isSubTeamAdmin: boolean;
   hasAdminPrivileges: boolean;
@@ -34,6 +34,7 @@ interface AppContextType extends AppState {
   updateUser: (userId: string, data: Partial<User>) => Promise<void>;
   deleteUser: (userToDelete: User) => Promise<void>;
   canDeleteUser: (userToDelete: User) => boolean;
+  canViewUser: (userToView: User) => boolean;
   canEditUser: (userToEdit: User) => boolean;
   setScheduleData: (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => Promise<void>;
   updateCategories: (categories: CategoryData) => Promise<void>;
@@ -43,6 +44,9 @@ interface AppContextType extends AppState {
   requestPushSubscription: () => Promise<void>;
   disablePushNotifications: () => Promise<void>;
   isPushSubscribed: boolean;
+  createMeeting: (meetingData: { title: string; day: string; time: string; attendeeIds: string[] }) => Promise<void>;
+  respondToMeeting: (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => Promise<void>;
+  deleteMeeting: (meetingId: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -67,6 +71,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     positions: [],
     subTeams: {},
     notifications: [],
+    meetings: [],
     loading: true,
   });
 
@@ -93,76 +98,60 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const isTeamAdmin = currentUserProfile?.role === 'team';
   const isSubTeamAdmin = currentUserProfile?.role === 'subTeam';
   const hasAdminPrivileges = isUniversalAdmin || isExecutiveAdmin || isTeamAdmin || isSubTeamAdmin;
+  
+  const canViewUser = useCallback((userToView: User) => {
+      if (!currentUserProfile) return false;
+      if (userToView.id === currentUserProfile.id) return true;
+      if (isUniversalAdmin) return true;
+      if (isExecutiveAdmin && (currentUserProfile.teams || []).includes(userToView.team)) return true;
+      if (isTeamAdmin && currentUserProfile.team === userToView.team) return true;
+      if (isSubTeamAdmin && currentUserProfile.team === userToView.team && currentUserProfile.subTeam === userToView.subTeam) return true;
+
+      const visibleTo = userToView.scheduleVisibleTo;
+      if (visibleTo) {
+          if (currentUserProfile.team && visibleTo.teams.includes(currentUserProfile.team)) return true;
+          if (currentUserProfile.subTeam && visibleTo.subTeams.includes(currentUserProfile.subTeam)) return true;
+      }
+      return false;
+  }, [currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin]);
 
   const canEditUser = useCallback((userToEdit: User) => {
     if (!currentUserProfile) return false;
-    
-    // Universal admin can edit anyone
     if (isUniversalAdmin) return true;
     
-    // Admins cannot edit users with a higher or equal role
     const roleHierarchy = { 'none': 0, 'subTeam': 1, 'team': 2, 'executive': 3, 'universal': 4 };
     const adminRoleLevel = roleHierarchy[currentUserProfile.role || 'none'];
     const targetRoleLevel = roleHierarchy[userToEdit.role || 'none'];
     if (adminRoleLevel <= targetRoleLevel) return false;
 
-    // Executive admins can edit users in their managed teams
-    if (isExecutiveAdmin) {
-        const managedTeams = currentUserProfile.teams || [];
-        return !!userToEdit.team && managedTeams.includes(userToEdit.team);
-    }
-    
-    // Team admins can edit users in their own team
-    if (isTeamAdmin) {
-        return userToEdit.team === currentUserProfile.team;
-    }
-
-    // Sub-team admins can edit users in their own sub-team
-    if (isSubTeamAdmin) {
-        return userToEdit.team === currentUserProfile.team && userToEdit.subTeam === currentUserProfile.subTeam;
-    }
+    if (isExecutiveAdmin) return !!userToEdit.team && (currentUserProfile.teams || []).includes(userToEdit.team);
+    if (isTeamAdmin) return userToEdit.team === currentUserProfile.team;
+    if (isSubTeamAdmin) return userToEdit.team === currentUserProfile.team && userToEdit.subTeam === currentUserProfile.subTeam;
 
     return false;
   }, [currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin]);
 
   const canDeleteUser = (userToDelete: User) => {
     if (!currentUser ) return false;
-    // Prevent deleting self
     if (userToDelete.id === currentUser.uid) return false;
-    
     return canEditUser(userToDelete);
   };
   
   const addNotification = useCallback(async (userId: string, title: string, message: string, link?: string) => {
     const notificationsCollection = collection(db, 'notifications');
-    const newNotification = {
-      userId,
-      title,
-      message,
-      link: link || '/add-schedule', // Default link
-      isRead: false,
-      createdAt: Date.now(),
+    const newNotification: Omit<Notification, 'id'> = {
+      userId, title, message, link: link || '/add-schedule', isRead: false, createdAt: Date.now(),
     };
     await addDoc(notificationsCollection, newNotification);
 
-    // fire a web-push too
     try {
       await fetch('/api/notify', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          userId,
-          title,
-          message,
-          link: newNotification.link,
-        }),
+        body: JSON.stringify({ userId, title, message, link: newNotification.link }),
       });
-    } catch (e) {
-      console.error('Failed to trigger web push:', e);
-    }
+    } catch (e) { console.error('Failed to trigger web push:', e); }
 
-
-    // Also add to local state immediately if it's for the current user
     if (userId === currentUser?.uid) {
         setState(prevState => ({
             ...prevState,
@@ -178,20 +167,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     const batch = writeBatch(db);
     unreadNotifications.forEach(n => {
-        // Don't try to update temp notifications
-        if (!n.id.startsWith('temp-')) {
-            const notifRef = doc(db, 'notifications', n.id);
-            batch.update(notifRef, { isRead: true });
-        }
+        if (!n.id.startsWith('temp-')) batch.update(doc(db, 'notifications', n.id), { isRead: true });
     });
     await batch.commit();
-
-    // Also update local state
-     setState(prevState => ({
-        ...prevState,
-        notifications: prevState.notifications.map(n => ({ ...n, isRead: true })),
-    }));
-
+     setState(prevState => ({ ...prevState, notifications: prevState.notifications.map(n => ({ ...n, isRead: true })) }));
   }, [currentUser, state.notifications]);
 
   const setScheduleData = useCallback(async (data: { slotCourses: SlotCoursesIndex; allCourses: string[]; timeSlots: string[]; }) => {
@@ -206,16 +185,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         const user = userDoc.data() as User;
         const updatedCourses = user.courses.filter(course => allCourses.includes(course));
         if (updatedCourses.length !== user.courses.length) {
-            const userRef = doc(db, 'users', user.id);
-            batch.update(userRef, { courses: updatedCourses });
+            batch.update(doc(db, 'users', user.id), { courses: updatedCourses });
         }
     });
     await batch.commit();
   }, []);
 
   const updateCategories = useCallback(async (categories: CategoryData) => {
-    const categoryDoc = doc(db, 'schedule', 'categories');
-    await setDoc(categoryDoc, categories);
+    await setDoc(doc(db, 'schedule', 'categories'), categories);
   }, []);
 
   const updateTeamName = useCallback(async (oldName: string, newName: string) => {
@@ -228,25 +205,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         const teamIndex = categories.teams.indexOf(oldName);
         if (teamIndex === -1) throw new Error("Team not found");
 
-        // Update team name in categories
-        const newTeams = [...categories.teams];
-        newTeams[teamIndex] = newName;
-        
+        const newTeams = [...categories.teams]; newTeams[teamIndex] = newName;
         const newSubTeams = { ...categories.subTeams };
-        if (newSubTeams[oldName]) {
-            newSubTeams[newName] = newSubTeams[oldName];
-            delete newSubTeams[oldName];
-        }
-
+        if (newSubTeams[oldName]) { newSubTeams[newName] = newSubTeams[oldName]; delete newSubTeams[oldName]; }
         transaction.update(categoryDocRef, { teams: newTeams, subTeams: newSubTeams });
 
-        // Find users with the old team name and update them
         const usersQuery = query(collection(db, "users"), where("team", "==", oldName));
         const usersSnapshot = await getDocs(usersQuery);
-        
-        usersSnapshot.forEach(userDoc => {
-            transaction.update(userDoc.ref, { team: newName });
-        });
+        usersSnapshot.forEach(userDoc => transaction.update(userDoc.ref, { team: newName }));
     });
   }, []);
   
@@ -258,43 +224,32 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           
           const categories = categoryDoc.data() as CategoryData;
           if (!categories.subTeams[parentTeam]) throw new Error("Parent team not found");
-
           const subTeamIndex = categories.subTeams[parentTeam].indexOf(oldName);
           if (subTeamIndex === -1) throw new Error("Sub-team not found");
 
-          // Update sub-team name in categories
-          const newSubTeamsForParent = [...categories.subTeams[parentTeam]];
-          newSubTeamsForParent[subTeamIndex] = newName;
+          const newSubTeamsForParent = [...categories.subTeams[parentTeam]]; newSubTeamsForParent[subTeamIndex] = newName;
           const newSubTeams = { ...categories.subTeams, [parentTeam]: newSubTeamsForParent };
-          
           transaction.update(categoryDocRef, { subTeams: newSubTeams });
 
-          // Find users with the old sub-team name and update them
           const usersQuery = query(collection(db, "users"), where("team", "==", parentTeam), where("subTeam", "==", oldName));
           const usersSnapshot = await getDocs(usersQuery);
-
-          usersSnapshot.forEach(userDoc => {
-              transaction.update(userDoc.ref, { subTeam: newName });
-          });
+          usersSnapshot.forEach(userDoc => transaction.update(userDoc.ref, { subTeam: newName }));
       });
   }, []);
 
   const handleUserTeamChange = useCallback(async (updatedUser: User) => {
       const allAdmins = state.users.filter(u => u.role && u.role !== 'none');
-      const notificationPromises: Promise<void>[] = [];
-
-      for (const admin of allAdmins) {
+      const notificationPromises = allAdmins.flatMap(admin => {
           const prefs = admin.notificationPreferences?.onUserJoin;
-          if (!prefs) continue;
-
+          if (!prefs) return [];
           const isTeamMatch = prefs.teams.includes(updatedUser.team) && !updatedUser.subTeam;
           const isSubTeamMatch = updatedUser.subTeam && prefs.subTeams.includes(updatedUser.subTeam);
-
           if (isTeamMatch || isSubTeamMatch) {
               const message = `${updatedUser.name} has just joined ${isSubTeamMatch ? `${updatedUser.team} > ${updatedUser.subTeam}` : updatedUser.team}.`;
-              notificationPromises.push(addNotification(admin.id, "New User Joined Team", message));
+              return [addNotification(admin.id, "New User Joined Team", message)];
           }
-      }
+          return [];
+      });
       await Promise.all(notificationPromises);
   }, [state.users, addNotification]);
 
@@ -304,69 +259,97 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (!userDocSnap.exists() || !currentUserProfile) return;
 
     const originalUserData = userDocSnap.data() as User;
-    const originalRole = originalUserData.role || 'none';
-    const newRole = data.role || originalRole;
-
-    const cleanedData = Object.fromEntries(
-      Object.entries(data).filter(([, value]) => value !== undefined)
-    );
-    
-    const hasTeamChanged = data.team !== undefined && data.team !== originalUserData.team;
-    const hasSubTeamChanged = data.subTeam !== undefined && data.subTeam !== originalUserData.subTeam;
-
+    const cleanedData = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
     await updateDoc(userDocRef, cleanedData);
 
     const updatedUser = { ...originalUserData, ...cleanedData };
-
-    if (hasTeamChanged || hasSubTeamChanged) {
+    if ((data.team && data.team !== originalUserData.team) || (data.subTeam && data.subTeam !== originalUserData.subTeam)) {
         await handleUserTeamChange(updatedUser);
     }
     
-    if (data.role && newRole !== originalRole) {
-      let message = `Your role has been set to ${roleToLabel(newRole)}.`;
-      if (newRole === 'executive' && data.teams && data.teams.length > 0) {
-        message += ` You can now manage the following teams: ${data.teams.join(', ')}.`;
-      } else if (newRole === 'team') {
-        message += ` You can now manage the ${originalUserData.team || data.team} team.`
-      } else if (newRole === 'subTeam') {
-        message += ` You can now manage the ${originalUserData.subTeam || data.subTeam} sub-team.`
-      } else if (newRole === 'none') {
-        message = 'Your administrative privileges have been removed.'
-      }
-
-      await addNotification(
-        userId, 
-        "Your Role Has Been Updated",
-        `Updated by ${currentUserProfile.name}. ${message}`
-      );
+    if (data.role && data.role !== originalUserData.role) {
+      let message = `Your role has been set to ${roleToLabel(data.role)}.`;
+      if (data.role === 'executive' && data.teams?.length) message += ` You can now manage: ${data.teams.join(', ')}.`;
+      else if (data.role === 'team') message += ` You can now manage the ${updatedUser.team} team.`;
+      else if (data.role === 'subTeam') message += ` You can now manage the ${updatedUser.subTeam} sub-team.`;
+      else if (data.role === 'none') message = 'Your administrative privileges have been removed.';
+      await addNotification(userId, "Your Role Has Been Updated", `Updated by ${currentUserProfile.name}. ${message}`);
     }
   }, [currentUserProfile, addNotification, handleUserTeamChange]);
+  
+  const createMeeting = useCallback(async (meetingData: { title: string; day: string; time: string; attendeeIds: string[] }) => {
+    if (!currentUserProfile) throw new Error("User not authenticated");
+    
+    const attendees: MeetingAttendee[] = meetingData.attendeeIds.map(id => {
+      const user = state.users.find(u => u.id === id);
+      return { userId: id, name: user?.name || 'Unknown User', status: 'pending' };
+    });
+    
+    const newMeeting: Omit<Meeting, 'id'> = {
+      title: meetingData.title,
+      day: meetingData.day,
+      time: meetingData.time,
+      organizerId: currentUserProfile.id,
+      organizerName: currentUserProfile.name,
+      attendees,
+      createdAt: Date.now()
+    };
+    
+    const meetingRef = await addDoc(collection(db, 'meetings'), newMeeting);
+    
+    const notificationPromises = attendees.map(attendee => 
+      addNotification(attendee.userId, "New Meeting Invitation", `You've been invited to "${meetingData.title}" by ${currentUserProfile.name} on ${meetingData.day} at ${meetingData.time}.`, '/meetings')
+    );
+    await Promise.all(notificationPromises);
+  }, [currentUserProfile, state.users, addNotification]);
+  
+  const respondToMeeting = useCallback(async (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => {
+    if (!currentUserProfile) throw new Error("User not authenticated");
+    
+    const meetingRef = doc(db, 'meetings', meetingId);
+    const meetingDoc = await getDoc(meetingRef);
+    if (!meetingDoc.exists()) throw new Error("Meeting not found");
+    
+    const meeting = meetingDoc.data() as Meeting;
+    const newAttendees = meeting.attendees.map(a => {
+      if (a.userId === currentUserProfile.id) {
+        return { ...a, status, responseReason: status === 'declined' ? reason : "" };
+      }
+      return a;
+    });
+    
+    await updateDoc(meetingRef, { attendees: newAttendees });
+    
+    await addNotification(meeting.organizerId, "Meeting Response", `${currentUserProfile.name} has ${status} your invitation to "${meeting.title}".`, '/meetings');
+  }, [currentUserProfile, addNotification]);
+  
+  const deleteMeeting = useCallback(async (meetingId: string) => {
+    const meetingRef = doc(db, 'meetings', meetingId);
+    const meetingDoc = await getDoc(meetingRef);
+    if (!meetingDoc.exists()) throw new Error("Meeting not found");
+    const meeting = meetingDoc.data() as Meeting;
+    
+    await deleteDoc(meetingRef);
+    
+    const notificationPromises = meeting.attendees.map(attendee => 
+      addNotification(attendee.userId, "Meeting Cancelled", `The meeting "${meeting.title}" on ${meeting.day} at ${meeting.time} has been cancelled.`)
+    );
+    await Promise.all(notificationPromises);
+  }, [addNotification]);
 
   useEffect(() => {
     let unsubs: (() => void)[] = [];
     setState(prevState => ({ ...prevState, loading: true }));
     
     unsubs.push(onSnapshot(collection(db, 'users'), (snapshot) => {
-        const usersData = snapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-                ...data,
-                id: doc.id,
-                createdAt: data.createdAt || 0,
-            } as User;
-        }).sort((a, b) => b.createdAt - a.createdAt); // Sort by most recent
+        const usersData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, createdAt: doc.data().createdAt || 0 } as User)).sort((a, b) => b.createdAt - a.createdAt);
         setState(prevState => ({ ...prevState, users: usersData }));
     }));
 
     unsubs.push(onSnapshot(doc(db, 'schedule', 'main'), (doc) => {
         if (doc.exists()) {
             const data = doc.data();
-            setState(prevState => ({
-            ...prevState,
-            allCourses: data.allCourses || [],
-            timeSlots: data.timeSlots || [],
-            slotCourses: data.slotCourses || {},
-            }));
+            setState(prevState => ({ ...prevState, allCourses: data.allCourses || [], timeSlots: data.timeSlots || [], slotCourses: data.slotCourses || {} }));
         } else {
             setState(prevState => ({ ...prevState, allCourses: [], timeSlots: [], slotCourses: {} }));
         }
@@ -375,161 +358,103 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     unsubs.push(onSnapshot(doc(db, 'schedule', 'categories'), (docSnap) => {
         if (docSnap.exists()) {
             const data = docSnap.data() as any;
-            
             let positions: Position[] = data.positions || [];
-            // One-time data migration for positions from string[] to Position[]
             if (positions.length > 0 && typeof positions[0] === 'string') {
-                const migratedPositions: Position[] = (positions as unknown as string[]).map(name => ({
-                    id: name.toLowerCase().replace(/\s+/g, '-') + '-migrated',
-                    name: name,
-                    icon: ''
-                }));
-                
-                const categoryDoc = doc(db, 'schedule', 'categories');
-                updateDoc(categoryDoc, { positions: migratedPositions });
-
+                const migratedPositions: Position[] = (positions as unknown as string[]).map(name => ({ id: name.toLowerCase().replace(/\s+/g, '-') + '-migrated', name: name, icon: '' }));
+                updateDoc(doc(db, 'schedule', 'categories'), { positions: migratedPositions });
                 positions = migratedPositions;
             }
-
-            setState(prevState => ({
-                ...prevState,
-                teams: data.teams || [],
-                positions: positions,
-                subTeams: data.subTeams || {},
-            }));
+            setState(prevState => ({ ...prevState, teams: data.teams || [], positions: positions, subTeams: data.subTeams || {} }));
         } else {
             setState(prevState => ({ ...prevState, teams: [], positions: [], subTeams: {} }));
         }
     }));
     
     if (currentUser?.uid) {
-        const q = query(
-            collection(db, "notifications"), 
-            where("userId", "==", currentUser.uid)
-        );
-        unsubs.push(onSnapshot(q, (querySnapshot) => {
-            const notificationsData = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            } as Notification)).sort((a, b) => b.createdAt - a.createdAt); // Sort client-side
+        unsubs.push(onSnapshot(query(collection(db, "notifications"), where("userId", "==", currentUser.uid)), (snap) => {
+            const notificationsData = snap.docs.map(d => ({ id: d.id, ...d.data() } as Notification)).sort((a, b) => b.createdAt - a.createdAt);
             setState(prevState => ({ ...prevState, notifications: notificationsData }));
         }));
+        
+        const meetingsQuery = query(collection(db, "meetings"), where("attendees", "array-contains", { userId: currentUser.uid, name: currentUser.displayName || "", status: "pending" }));
+        
+        const organizedMeetingsQuery = query(collection(db, "meetings"), where("organizerId", "==", currentUser.uid));
+        
+        const invitedMeetingsQuery = query(collection(db, 'meetings'), where('attendees', 'array-contains', { userId: currentUser.uid, status: 'pending', name: currentUser.displayName || '' }));
+
+
+        const meetingsRef = collection(db, "meetings");
+        const q = query(meetingsRef, where('attendees', 'array-contains', {userId: currentUser.uid}));
+
+        const unsubMeetings = onSnapshot(collection(db, 'meetings'), (snapshot) => {
+            const allMeetings: Meeting[] = [];
+            snapshot.forEach(doc => {
+                const meeting = { id: doc.id, ...doc.data() } as Meeting;
+                if (meeting.organizerId === currentUser.uid || meeting.attendees.some(a => a.userId === currentUser.uid)) {
+                    allMeetings.push(meeting);
+                }
+            });
+            setState(prevState => ({ ...prevState, meetings: allMeetings.sort((a,b) => b.createdAt - a.createdAt) }));
+        });
+        unsubs.push(unsubMeetings);
+
     } else {
-        setState(prevState => ({ ...prevState, notifications: [] }));
+        setState(prevState => ({ ...prevState, notifications: [], meetings: [] }));
     }
 
 
-    Promise.all([
-        getDocs(collection(db, 'users')), 
-        getDoc(doc(db, 'schedule', 'main')), 
-        getDoc(doc(db, 'schedule', 'categories'))
-    ]).finally(() => {
-        setState(prevState => ({ ...prevState, loading: false }));
-    });
+    Promise.all([ getDocs(collection(db, 'users')), getDoc(doc(db, 'schedule', 'main')), getDoc(doc(db, 'schedule', 'categories')) ])
+      .finally(() => setState(prevState => ({ ...prevState, loading: false })));
 
-    return () => {
-      unsubs.forEach(unsub => unsub());
-    };
+    return () => unsubs.forEach(unsub => unsub());
   }, [currentUser]);
 
   const addUser = async (user: User, isNewUser: boolean) => {
     try {
         const userDocRef = doc(db, 'users', user.id);
-        
         let originalUser: User | null = null;
         if (!isNewUser) {
             const docSnap = await getDoc(userDocRef);
-            if (docSnap.exists()) {
-                originalUser = docSnap.data() as User;
-            }
+            if (docSnap.exists()) originalUser = docSnap.data() as User;
         }
-        
-        const userWithTimestamp = {
-            ...user,
-            createdAt: user.createdAt || Date.now(),
-        };
+        const userWithTimestamp = { ...user, createdAt: user.createdAt || Date.now() };
         await setDoc(userDocRef, userWithTimestamp);
-
-        const hasTeamChanged = originalUser && (originalUser.team !== user.team || originalUser.subTeam !== user.subTeam);
-
-        if (isNewUser || hasTeamChanged) {
+        if (isNewUser || (originalUser && (originalUser.team !== user.team || originalUser.subTeam !== user.subTeam))) {
             await handleUserTeamChange(userWithTimestamp);
         }
-
-    } catch (error) {
-      console.error("Error adding/updating user:", error);
-      throw error;
-    }
+    } catch (error) { console.error("Error adding/updating user:", error); throw error; }
   };
 
   const deleteUser = async (userToDelete: User) => {
-    if (!currentUserProfile) {
-        throw new Error("Cannot delete user: current user profile not available.");
-    }
+    if (!currentUserProfile) throw new Error("Cannot delete user: current user profile not available.");
     try {
-        const deletedUserDocRef = doc(db, 'deletedUsers', userToDelete.id);
-        const userDocRef = doc(db, 'users', userToDelete.id);
+        const deletedRecord = { ...userToDelete, deletedAt: Date.now(), deletedBy: currentUserProfile.id, deletedByName: currentUserProfile.name };
+        await setDoc(doc(db, 'deletedUsers', userToDelete.id), deletedRecord);
+        await deleteDoc(doc(db, 'users', userToDelete.id));
 
-        const deletedRecord = {
-            ...userToDelete,
-            deletedAt: Date.now(),
-            deletedBy: currentUserProfile.id,
-            deletedByName: currentUserProfile.name,
-        };
-
-        // Move to deletedUsers and then delete from users
-        await setDoc(deletedUserDocRef, deletedRecord);
-        await deleteDoc(userDocRef);
-
-        // Also delete their subscriptions subcollection
-        const subscriptionsCollection = collection(db, 'users', userToDelete.id, 'subscriptions');
-        const subsSnapshot = await getDocs(subscriptionsCollection);
+        const subsSnapshot = await getDocs(collection(db, 'users', userToDelete.id, 'subscriptions'));
         const batch = writeBatch(db);
-        subsSnapshot.forEach(subDoc => {
-            batch.delete(subDoc.ref);
-        });
+        subsSnapshot.forEach(subDoc => batch.delete(subDoc.ref));
         await batch.commit();
-
-    } catch (error) {
-        console.error("Error deleting user:", error);
-    }
+    } catch (error) { console.error("Error deleting user:", error); }
   };
   
   const value: AppContextType = {
       ...state,
       loading: state.loading || authLoading,
       currentUserProfile,
-      isUniversalAdmin,
-      isExecutiveAdmin,
-      isTeamAdmin,
-      isSubTeamAdmin,
-      hasAdminPrivileges,
-      addUser,
-      updateUser,
-      deleteUser,
-      canDeleteUser,
-      canEditUser,
-      setScheduleData,
-      updateCategories,
-      updateTeamName,
-      updateSubTeamName,
-      markNotificationsAsRead,
-      requestPushSubscription,
-      disablePushNotifications,
-      isPushSubscribed,
+      isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges,
+      addUser, updateUser, deleteUser, canDeleteUser, canViewUser, canEditUser,
+      setScheduleData, updateCategories, updateTeamName, updateSubTeamName, markNotificationsAsRead,
+      requestPushSubscription, disablePushNotifications, isPushSubscribed,
+      createMeeting, respondToMeeting, deleteMeeting,
   };
 
-  return (
-    <AppContext.Provider value={value}>
-      {children}
-    </AppContext.Provider>
-  );
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
 
 export const useAppContext = () => {
   const context = useContext(AppContext);
-  if (context === undefined) {
-    throw new Error('useAppContext must be used within an AppProvider');
-  }
+  if (context === undefined) throw new Error('useAppContext must be used within an AppProvider');
   return context;
 };

@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { LogOut, Home, CalendarPlus, CalendarCheck, Shield, Menu, Bell, Info, BellRing, BellOff } from "lucide-react";
+import { LogOut, Home, CalendarPlus, CalendarCheck, Shield, Menu, Bell, Info, BellRing, BellOff, CalendarHeart } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 import {
@@ -46,6 +46,7 @@ export default function Navbar() {
     { href: "/", label: "Home", icon: Home },
     { href: "/add-schedule", label: "My Schedule", icon: CalendarPlus },
     { href: "/view-schedule", label: "View Schedule", icon: CalendarCheck },
+    { href: "/meetings", label: "My Meetings", icon: CalendarHeart },
   ];
 
   if (hasAdminPrivileges) {

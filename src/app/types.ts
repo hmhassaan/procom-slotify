@@ -60,3 +60,25 @@ export type Notification = {
   createdAt: number;
 };
 
+export type MeetingAttendeeStatus = 'pending' | 'accepted' | 'declined';
+
+export type MeetingAttendee = {
+  userId: string;
+  name: string;
+  status: MeetingAttendeeStatus;
+  responseReason?: string;
+};
+
+export type Meeting = {
+  id: string;
+  title: string;
+  day: string;
+  time: string;
+  organizerId: string;
+  organizerName: string;
+  attendees: MeetingAttendee[];
+  createdAt: number;
+};
+
+
+
