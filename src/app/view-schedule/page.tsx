@@ -386,7 +386,7 @@ export default function ViewSchedulePage() {
           const userMeetingsInSlot = meetings.filter(m => {
             const meetingDate = new Date(m.date);
             const meetingDay = format(meetingDate, "eeee"); // "Monday", "Tuesday", etc.
-            return m.day === day && m.time === time && m.attendees.some(a => a.userId === user.id && a.status === 'accepted');
+            return meetingDay === day && m.time === time && m.attendees.some(a => a.userId === user.id && a.status === 'accepted');
           });
 
           if (userMeetingsInSlot.length > 0) {
