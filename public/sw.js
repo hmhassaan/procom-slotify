@@ -1,5 +1,6 @@
 // public/sw.js
 
+
 // Listen for the install event, which fires when the service worker is first installed.
 self.addEventListener('install', event => {
   console.log('Service Worker: Installing...');
