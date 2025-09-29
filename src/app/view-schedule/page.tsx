@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { PlusCircle, Trash2, Filter, Star, ChevronDown, CalendarPlus, Check } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -48,6 +48,51 @@ type SlotInfo = {
   time: string;
   availableCount: number;
   totalCount: number;
+};
+
+const useViewSchedule = () => {
+    const { users, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, canViewUser } = useAppContext();
+    const [teamFilters, setTeamFilters] = useState<string[]>([]);
+    const [positionFilters, setPositionFilters] = useState<string[]>([]);
+    const [subTeamFilters, setSubTeamFilters] = useState<string[]>([]);
+    const [advancedFilterGroups, setAdvancedFilterGroups] = useState<AdvancedFilterGroup[]>([]);
+
+    const filteredUsers = useMemo(() => {
+        if (!currentUserProfile) return [];
+        const visibleUsers = users.filter(canViewUser);
+
+        let filteredSet: User[];
+
+        if (advancedFilterGroups.length > 0) {
+            filteredSet = visibleUsers.filter(user =>
+                advancedFilterGroups.some(group =>
+                    (group.teams.length === 0 || group.teams.includes(user.team)) &&
+                    (group.subTeams.length === 0 || (user.subTeam && group.subTeams.includes(user.subTeam))) &&
+                    (group.positions.length === 0 || group.positions.includes(user.position))
+                )
+            );
+        } else {
+            filteredSet = visibleUsers.filter(user =>
+                (teamFilters.length === 0 || teamFilters.includes(user.team || '')) &&
+                (positionFilters.length === 0 || positionFilters.includes(user.position)) &&
+                (subTeamFilters.length === 0 || (user.subTeam && subTeamFilters.includes(user.subTeam)))
+            );
+        }
+
+        const finalUserSet = new Set(filteredSet);
+        const self = users.find(u => u.id === currentUserProfile.id);
+        if (self) finalUserSet.add(self);
+
+        return Array.from(finalUserSet);
+    }, [users, teamFilters, positionFilters, subTeamFilters, advancedFilterGroups, currentUserProfile, canViewUser]);
+
+    return {
+        filteredUsers,
+        teamFilters, setTeamFilters,
+        positionFilters, setPositionFilters,
+        subTeamFilters, setSubTeamFilters,
+        advancedFilterGroups, setAdvancedFilterGroups,
+    };
 };
 
 
@@ -144,52 +189,6 @@ const ScheduleMeetingDialog = ({ day, time }: { day: string, time: string }) => 
     </Dialog>
   );
 };
-
-const useViewSchedule = () => {
-    const { users, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, canViewUser } = useAppContext();
-    const [teamFilters, setTeamFilters] = useState<string[]>([]);
-    const [positionFilters, setPositionFilters] = useState<string[]>([]);
-    const [subTeamFilters, setSubTeamFilters] = useState<string[]>([]);
-    const [advancedFilterGroups, setAdvancedFilterGroups] = useState<AdvancedFilterGroup[]>([]);
-
-    const filteredUsers = useMemo(() => {
-        if (!currentUserProfile) return [];
-        const visibleUsers = users.filter(canViewUser);
-
-        let filteredSet: User[];
-
-        if (advancedFilterGroups.length > 0) {
-            filteredSet = visibleUsers.filter(user =>
-                advancedFilterGroups.some(group =>
-                    (group.teams.length === 0 || group.teams.includes(user.team)) &&
-                    (group.subTeams.length === 0 || (user.subTeam && group.subTeams.includes(user.subTeam))) &&
-                    (group.positions.length === 0 || group.positions.includes(user.position))
-                )
-            );
-        } else {
-            filteredSet = visibleUsers.filter(user =>
-                (teamFilters.length === 0 || teamFilters.includes(user.team || '')) &&
-                (positionFilters.length === 0 || positionFilters.includes(user.position)) &&
-                (subTeamFilters.length === 0 || (user.subTeam && subTeamFilters.includes(user.subTeam)))
-            );
-        }
-
-        const finalUserSet = new Set(filteredSet);
-        const self = users.find(u => u.id === currentUserProfile.id);
-        if (self) finalUserSet.add(self);
-
-        return Array.from(finalUserSet);
-    }, [users, teamFilters, positionFilters, subTeamFilters, advancedFilterGroups, currentUserProfile, canViewUser]);
-
-    return {
-        filteredUsers,
-        teamFilters, setTeamFilters,
-        positionFilters, setPositionFilters,
-        subTeamFilters, setSubTeamFilters,
-        advancedFilterGroups, setAdvancedFilterGroups,
-    };
-};
-
 
 export default function ViewSchedulePage() {
   const { users, timeSlots, slotCourses, loading, teams, positions, subTeams, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, isSubTeamAdmin, hasAdminPrivileges, meetings, canViewUser } = useAppContext();
