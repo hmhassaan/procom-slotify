@@ -619,7 +619,7 @@ const getRoleIcon = (role?: UserRole) => {
 
 export default function AdminPage() {
   const { teams, users, positions, subTeams, setScheduleData, clearAllUsers, loading, currentUserProfile, isUniversalAdmin, isExecutiveAdmin, isTeamAdmin, hasAdminPrivileges } = useAppContext();
-  const [isUploading, setIsUploading] = useState(isUploading);
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { toast } = useToast();
@@ -960,5 +960,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
-    
