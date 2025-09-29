@@ -14,13 +14,17 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { PlusCircle, Trash2, Filter, Star, ChevronDown, CalendarPlus, Check } from "lucide-react";
+import { PlusCircle, Trash2, Filter, Star, ChevronDown, CalendarPlus, Check, Calendar as CalendarIcon } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -107,21 +111,35 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers }: { day: string, time
   const [isOpen, setIsOpen] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  
-  
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+
   useEffect(() => {
     if (isOpen) {
-      const defaultSelectedIds = filteredUsers
-          .filter(u => u.id !== currentUserProfile?.id)
-          .map(u => u.id);
-      setSelectedUserIds(defaultSelectedIds);
-      setMeetingTitle("");
+        const defaultSelectedIds = filteredUsers
+            .filter(u => u.id !== currentUserProfile?.id)
+            .map(u => u.id);
+        setSelectedUserIds(defaultSelectedIds);
+        setMeetingTitle("");
+
+        // Find the next occurrence of the selected day
+        const today = new Date();
+        const dayIndex = weekdays.indexOf(day);
+        const todayIndex = (today.getDay() + 6) % 7; // Monday is 0
+        let daysUntil = dayIndex - todayIndex;
+        if (daysUntil < 0) daysUntil += 7;
+        const nextDate = new Date(today);
+        nextDate.setDate(today.getDate() + daysUntil);
+        setSelectedDate(nextDate);
     }
-  }, [isOpen, filteredUsers, currentUserProfile]);
+  }, [isOpen, filteredUsers, currentUserProfile, day]);
 
   const handleCreateMeeting = async () => {
     if (!meetingTitle.trim()) {
       toast({ variant: "destructive", title: "Title is required" });
+      return;
+    }
+     if (!selectedDate) {
+      toast({ variant: "destructive", title: "Date is required" });
       return;
     }
     if (selectedUserIds.length === 0) {
@@ -133,7 +151,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers }: { day: string, time
     try {
       await createMeeting({
         title: meetingTitle,
-        day,
+        date: selectedDate.getTime(),
         time,
         attendeeIds: selectedUserIds,
       });
@@ -204,12 +222,26 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers }: { day: string, time
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Schedule a Meeting</DialogTitle>
-          <DialogDescription>For {day} at {time}</DialogDescription>
+          <DialogDescription>On {time}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
             <Label htmlFor="meeting-title">Meeting Title</Label>
             <Input id="meeting-title" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} />
+          </div>
+           <div>
+            <Label htmlFor="meeting-date">Meeting Date</Label>
+             <Popover>
+                <PopoverTrigger asChild>
+                    <Button id="meeting-date" variant={"outline"} className={cn("w-full justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}>
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                    <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
+                </PopoverContent>
+            </Popover>
           </div>
           <div>
             <div className="flex justify-between items-center mb-2">
@@ -350,8 +382,13 @@ export default function ViewSchedulePage() {
             slotAvailability.unavailable.push({ ...user, reason: "Off Day" });
             return;
           }
+          
+          const userMeetingsInSlot = meetings.filter(m => {
+            const meetingDate = new Date(m.date);
+            const meetingDay = format(meetingDate, "eeee"); // "Monday", "Tuesday", etc.
+            return m.day === day && m.time === time && m.attendees.some(a => a.userId === user.id && a.status === 'accepted');
+          });
 
-          const userMeetingsInSlot = meetings.filter(m => m.day === day && m.time === time && m.attendees.some(a => a.userId === user.id && a.status === 'accepted'));
           if (userMeetingsInSlot.length > 0) {
               slotAvailability.unavailable.push({ ...user, reason: `Meeting: ${userMeetingsInSlot[0].title}` });
               return;
@@ -441,8 +478,10 @@ export default function ViewSchedulePage() {
     if (!currentUserProfile) return map;
 
     meetings.forEach(meeting => {
+      const meetingDate = new Date(meeting.date);
+      const meetingDay = format(meetingDate, "eeee");
       if (meeting.attendees.some(a => a.userId === currentUserProfile.id && a.status === 'accepted')) {
-        const key = `${meeting.day}-${meeting.time}`;
+        const key = `${meetingDay}-${meeting.time}`;
         const existing = map.get(key) || [];
         map.set(key, [...existing, meeting]);
       }

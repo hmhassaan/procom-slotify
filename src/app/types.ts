@@ -64,7 +64,7 @@ export type MeetingAttendeeStatus = 'pending' | 'accepted' | 'declined';
 
 export type MeetingAttendee = {
   userId: string;
-  name: string;
+  name:string;
   status: MeetingAttendeeStatus;
   responseReason?: string;
 };
@@ -72,13 +72,14 @@ export type MeetingAttendee = {
 export type Meeting = {
   id: string;
   title: string;
-  day: string;
+  date: number; // Changed from day: string to date: number (timestamp)
   time: string;
   organizerId: string;
   organizerName: string;
   attendees: MeetingAttendee[];
   createdAt: number;
 };
+
 
 
 

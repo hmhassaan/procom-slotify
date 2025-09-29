@@ -8,9 +8,9 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, X, Calendar, User, Users, Trash2, CalendarPlus } from "lucide-react";
+import { Check, X, Calendar as CalendarIcon, User, Users, Trash2, CalendarPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import type { Meeting, MeetingAttendeeStatus, User as AppUser } from "@/app/types";
+import type { Meeting, MeetingAttendeeStatus, User as AppUser, Position } from "@/app/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,15 +22,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
+import { format, isPast } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const ScheduleMeetingFromMeetingsPage = () => {
-    const { users, currentUserProfile, createMeeting, canViewUser, teams, subTeams, positions, timeSlots, meetings } = useAppContext();
+    const { users, currentUserProfile, createMeeting, canViewUser, teams, subTeams, positions, timeSlots } = useAppContext();
     const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
     const [meetingTitle, setMeetingTitle] = useState("");
-    const [selectedDay, setSelectedDay] = useState("");
+    const [selectedDate, setSelectedDate] = useState<Date | undefined>();
     const [selectedTime, setSelectedTime] = useState("");
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   
@@ -38,19 +42,20 @@ const ScheduleMeetingFromMeetingsPage = () => {
         if (isOpen) {
             setMeetingTitle("");
             setSelectedUserIds([]);
-            setSelectedDay("");
+            setSelectedDate(undefined);
             setSelectedTime("");
         }
     }, [isOpen]);
   
     const handleCreateMeeting = async () => {
         if (!meetingTitle.trim()) { toast({ variant: "destructive", title: "Title is required" }); return; }
-        if (!selectedDay || !selectedTime) { toast({ variant: "destructive", title: "Slot is required" }); return; }
+        if (!selectedDate) { toast({ variant: "destructive", title: "Date is required" }); return; }
+        if (!selectedTime) { toast({ variant: "destructive", title: "Time is required" }); return; }
         if (selectedUserIds.length === 0) { toast({ variant: "destructive", title: "Select at least one member" }); return; }
         if (!currentUserProfile) return;
   
         try {
-            await createMeeting({ title: meetingTitle, day: selectedDay, time: selectedTime, attendeeIds: selectedUserIds });
+            await createMeeting({ title: meetingTitle, date: selectedDate.getTime(), time: selectedTime, attendeeIds: selectedUserIds });
             toast({ title: "Meeting Scheduled", description: "Invitations have been sent." });
             setIsOpen(false);
         } catch (e) {
@@ -59,18 +64,56 @@ const ScheduleMeetingFromMeetingsPage = () => {
         }
     };
   
-    const allInvitableUsers = useMemo(() => users.filter(u => canViewUser(u) && u.id !== currentUserProfile?.id), [users, canViewUser, currentUserProfile]);
-  
-    const handleGroupSelection = (ids: string[], isChecked: boolean) => {
+     const inviteeListStructure = useMemo(() => {
+        const allVisibleUsers = users.filter(u => canViewUser(u) && u.id !== currentUserProfile?.id);
+        const positionOrder = new Map(positions.map((p, i) => [p.name, i]));
+        const sortUsers = (userList: AppUser[]) => {
+          return userList.sort((a, b) => {
+            const orderA = positionOrder.get(a.position) ?? 999;
+            const orderB = positionOrder.get(b.position) ?? 999;
+            if (orderA !== orderB) return orderA - orderB;
+            return a.name.localeCompare(b.name);
+          });
+        };
+
+        return teams.map(team => {
+            const teamUsers = allVisibleUsers.filter(u => u.team === team);
+            const teamSubTeams = subTeams[team] || [];
+            const usersInNoSubTeam = teamUsers.filter(u => !u.subTeam);
+
+            const subTeamsWithUsers = teamSubTeams.map(subTeamName => ({
+                name: subTeamName,
+                users: sortUsers(teamUsers.filter(u => u.subTeam === subTeamName))
+            }));
+
+            return {
+                name: team,
+                usersInNoSubTeam: sortUsers(usersInNoSubTeam),
+                subTeams: subTeamsWithUsers,
+            }
+        }).filter(team => team.usersInNoSubTeam.length > 0 || team.subTeams.some(st => st.users.length > 0));
+
+    }, [users, teams, subTeams, positions, canViewUser, currentUserProfile]);
+
+    const toggleSelection = (ids: string[], select: boolean) => {
         setSelectedUserIds(prev => {
             const idSet = new Set(prev);
             ids.forEach(id => {
-                if (isChecked) idSet.add(id);
+                if (select) idSet.add(id);
                 else idSet.delete(id);
             });
             return Array.from(idSet);
         });
     };
+    
+    const handleGroupSelection = (ids: string[]) => {
+      const allSelected = ids.every(id => selectedUserIds.includes(id));
+      toggleSelection(ids, !allSelected);
+    };
+
+    const allInviteeIds = useMemo(() => inviteeListStructure.flatMap(t => [...t.usersInNoSubTeam.map(u => u.id), ...t.subTeams.flatMap(st => st.users.map(u => u.id))]), [inviteeListStructure]);
+
+    if (!currentUserProfile) return null;
   
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -85,13 +128,18 @@ const ScheduleMeetingFromMeetingsPage = () => {
                 <div className="space-y-4">
                     <Input id="meeting-title" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} placeholder="Meeting Title" />
                     <div className="grid grid-cols-2 gap-4">
-                        <Select value={selectedDay} onValueChange={setSelectedDay}>
-                            <SelectTrigger><SelectValue placeholder="Select Day"/></SelectTrigger>
-                            <SelectContent>
-                                {weekdays.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                        <Select value={selectedTime} onValueChange={setSelectedTime} disabled={!selectedDay}>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant={"outline"} className={cn("justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}>
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                                <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
+                            </PopoverContent>
+                        </Popover>
+                        <Select value={selectedTime} onValueChange={setSelectedTime}>
                             <SelectTrigger><SelectValue placeholder="Select Time"/></SelectTrigger>
                             <SelectContent>
                                 {timeSlots.map(time => <SelectItem key={time} value={time}>{time}</SelectItem>)}
@@ -101,18 +149,62 @@ const ScheduleMeetingFromMeetingsPage = () => {
                     <div>
                         <div className="flex justify-between items-center mb-2">
                             <Label>Invite Members</Label>
-                            <div>
-                                <Button variant="link" size="sm" onClick={() => handleGroupSelection(allInvitableUsers.map(u => u.id), true)}>Select All</Button>
-                                <Button variant="link" size="sm" onClick={() => handleGroupSelection(allInvitableUsers.map(u => u.id), false)}>Deselect All</Button>
+                            <div className="flex gap-2">
+                                <Button variant="link" size="sm" onClick={() => toggleSelection(allInviteeIds, true)}>Select All</Button>
+                                <Button variant="link" size="sm" onClick={() => toggleSelection(allInviteeIds, false)}>Deselect All</Button>
                             </div>
                         </div>
                         <ScrollArea className="h-60 border rounded-md p-4">
-                            {allInvitableUsers.map(user => (
-                                <div key={user.id} className="flex items-center gap-2">
-                                    <Checkbox id={`invite-${user.id}`} checked={selectedUserIds.includes(user.id)} onCheckedChange={(checked) => handleGroupSelection([user.id], !!checked)} />
-                                    <Label htmlFor={`invite-${user.id}`}>{user.name} - {user.position}</Label>
-                                </div>
-                            ))}
+                            <div className="space-y-4">
+                                {inviteeListStructure.map(team => {
+                                    const teamUserIds = team.usersInNoSubTeam.map(u => u.id);
+                                    const areAllTeamUsersSelected = team.usersInNoSubTeam.length > 0 && teamUserIds.every(id => selectedUserIds.includes(id));
+                                    return (
+                                        <div key={team.name}>
+                                            <div className="flex items-center gap-2 font-semibold text-sm border-b mb-2 pb-1">
+                                                <Checkbox id={`select-team-${team.name}`} 
+                                                    checked={areAllTeamUsersSelected} 
+                                                    onCheckedChange={() => handleGroupSelection(teamUserIds)}
+                                                    disabled={team.usersInNoSubTeam.length === 0}
+                                                />
+                                                <Label htmlFor={`select-team-${team.name}`}>{team.name}</Label>
+                                            </div>
+                                            <div className="space-y-2">
+                                                {team.usersInNoSubTeam.map(user => (
+                                                    <div key={user.id} className="flex items-center gap-2 ml-4">
+                                                    <Checkbox id={`invite-mtg-page-${user.id}`} checked={selectedUserIds.includes(user.id)} onCheckedChange={(checked) => toggleSelection([user.id], !!checked)} />
+                                                    <Label htmlFor={`invite-mtg-page-${user.id}`}>{user.name} - {user.position}</Label>
+                                                    </div>
+                                                ))}
+                                                {team.subTeams.map(subTeam => {
+                                                    const subTeamUserIds = subTeam.users.map(u => u.id);
+                                                    const areAllSubTeamUsersSelected = subTeam.users.length > 0 && subTeamUserIds.every(id => selectedUserIds.includes(id));
+                                                    return (
+                                                        <div key={subTeam.name} className="pl-4 pt-2">
+                                                            <div className="flex items-center gap-2 font-medium text-xs text-muted-foreground mb-1">
+                                                                <Checkbox id={`select-subteam-mtg-page-${subTeam.name}`} 
+                                                                    checked={areAllSubTeamUsersSelected} 
+                                                                    onCheckedChange={() => handleGroupSelection(subTeamUserIds)}
+                                                                    disabled={subTeam.users.length === 0}
+                                                                />
+                                                                <Label htmlFor={`select-subteam-mtg-page-${subTeam.name}`}>{subTeam.name}</Label>
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                {subTeam.users.map(user => (
+                                                                    <div key={user.id} className="flex items-center gap-2 ml-4">
+                                                                        <Checkbox id={`invite-mtg-page-${user.id}`} checked={selectedUserIds.includes(user.id)} onCheckedChange={(checked) => toggleSelection([user.id], !!checked)} />
+                                                                        <Label htmlFor={`invite-mtg-page-${user.id}`}>{user.name} - {user.position}</Label>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
                         </ScrollArea>
                     </div>
                 </div>
@@ -137,7 +229,7 @@ const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: M
   const handleDeclineSubmit = () => {
     onRespond(meeting.id, 'declined', declineReason);
     setIsDeclineDialogOpen(false);
-    setSetDeclineReason("");
+    setDeclineReason("");
   };
 
   const getStatusBadge = (status: MeetingAttendeeStatus) => {
@@ -147,13 +239,15 @@ const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: M
       case 'pending': return <Badge variant="outline">Pending</Badge>;
     }
   };
+  
+  const meetingIsPast = isPast(new Date(meeting.date));
 
   return (
-    <Card>
+    <Card className={cn(meetingIsPast && "opacity-60")}>
       <CardHeader>
         <CardTitle>{meeting.title}</CardTitle>
         <CardDescription className="flex items-center gap-4 pt-2 text-sm">
-          <span className="flex items-center gap-2"><Calendar className="w-4 h-4"/>{meeting.day}, {meeting.time}</span>
+          <span className="flex items-center gap-2"><CalendarIcon className="w-4 h-4"/>{format(new Date(meeting.date), "EEE, MMM d")} at {meeting.time} {meetingIsPast && <Badge variant="outline">Past</Badge>}</span>
           <span className="flex items-center gap-2"><User className="w-4 h-4"/>Organized by {meeting.organizerName}</span>
         </CardDescription>
       </CardHeader>
@@ -175,8 +269,7 @@ const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: M
                            </div>
                         </TooltipTrigger>
                          <TooltipContent>
-                           {isOrganizer && attendee.status === 'declined' && attendee.responseReason ? <p>Reason: {attendee.responseReason}</p> : <p>Status: {attendee.status}</p>}
-                           {!isOrganizer && <p>{attendee.name}</p>}
+                           {isOrganizer && attendee.status === 'declined' && attendee.responseReason ? <p>Reason: {attendee.responseReason}</p> : isOrganizer ? <p>Status: {attendee.status}</p> : <p>{attendee.name}</p>}
                         </TooltipContent>
                     </Tooltip>
                  </TooltipProvider>
@@ -243,14 +336,9 @@ export default function MeetingsPage() {
   const { allMeetings, organizedMeetings, invitedMeetings, pendingInvites } = useMemo(() => {
     if (!currentUserProfile) return { allMeetings: [], organizedMeetings: [], invitedMeetings: [], pendingInvites: [] };
     
-    const dayOrder = weekdays.reduce((acc, day, index) => {
-        acc[day] = index;
-        return acc;
-    }, {} as Record<string, number>);
-
     const sortFn = (a: Meeting, b: Meeting) => {
-        const dayCompare = dayOrder[a.day] - dayOrder[b.day];
-        if (dayCompare !== 0) return dayCompare;
+        const dateCompare = a.date - b.date;
+        if (dateCompare !== 0) return dateCompare;
         return a.time.localeCompare(b.time);
     };
 
@@ -344,5 +432,3 @@ export default function MeetingsPage() {
     </div>
   );
 }
-
-    

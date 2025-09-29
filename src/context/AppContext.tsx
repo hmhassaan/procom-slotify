@@ -8,6 +8,7 @@ import { db } from '@/lib/firebase';
 import type { User, CategoryData, UserRole, Position, Notification, Meeting, MeetingAttendeeStatus, MeetingAttendee } from '@/app/types';
 import { useAuth } from './AuthContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { format } from 'date-fns';
 
 export type { User, CategoryData, UserRole, Position, Notification, Meeting };
 export type SlotCoursesIndex = Record<string, Record<string, string[]>>;
@@ -44,7 +45,7 @@ interface AppContextType extends AppState {
   requestPushSubscription: () => Promise<void>;
   disablePushNotifications: () => Promise<void>;
   isPushSubscribed: boolean;
-  createMeeting: (meetingData: { title: string; day: string; time: string; attendeeIds: string[] }) => Promise<void>;
+  createMeeting: (meetingData: { title: string; date: number; time: string; attendeeIds: string[] }) => Promise<void>;
   respondToMeeting: (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => Promise<void>;
   deleteMeeting: (meetingId: string) => Promise<void>;
 }
@@ -277,7 +278,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [currentUserProfile, addNotification, handleUserTeamChange]);
   
-  const createMeeting = useCallback(async (meetingData: { title: string; day: string; time: string; attendeeIds: string[] }) => {
+  const createMeeting = useCallback(async (meetingData: { title: string; date: number; time: string; attendeeIds: string[] }) => {
     if (!currentUserProfile) throw new Error("User not authenticated");
     
     const attendees: MeetingAttendee[] = meetingData.attendeeIds.map(id => {
@@ -287,7 +288,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     
     const newMeeting: Omit<Meeting, 'id'> = {
       title: meetingData.title,
-      day: meetingData.day,
+      date: meetingData.date,
       time: meetingData.time,
       organizerId: currentUserProfile.id,
       organizerName: currentUserProfile.name,
@@ -298,7 +299,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const meetingRef = await addDoc(collection(db, 'meetings'), newMeeting);
     
     const notificationPromises = attendees.map(attendee => 
-      addNotification(attendee.userId, "New Meeting Invitation", `You've been invited to "${meetingData.title}" by ${currentUserProfile.name} on ${meetingData.day} at ${meetingData.time}.`, '/meetings')
+      addNotification(attendee.userId, "New Meeting Invitation", `You've been invited to "${meetingData.title}" by ${currentUserProfile.name} on ${format(new Date(meetingData.date), "EEE, MMM d")} at ${meetingData.time}.`, '/meetings')
     );
     await Promise.all(notificationPromises);
   }, [currentUserProfile, state.users, addNotification]);
@@ -332,7 +333,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     await deleteDoc(meetingRef);
     
     const notificationPromises = meeting.attendees.map(attendee => 
-      addNotification(attendee.userId, "Meeting Cancelled", `The meeting "${meeting.title}" on ${meeting.day} at ${meeting.time} has been cancelled.`)
+      addNotification(attendee.userId, "Meeting Cancelled", `The meeting "${meeting.title}" on ${format(new Date(meeting.date), "EEE, MMM d")} at ${meeting.time} has been cancelled.`)
     );
     await Promise.all(notificationPromises);
   }, [addNotification]);
