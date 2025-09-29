@@ -37,6 +37,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { notifyAllUsersOnScheduleUpdateFlow } from "@/ai/flows/timetable-update-flow";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -960,3 +961,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+    
