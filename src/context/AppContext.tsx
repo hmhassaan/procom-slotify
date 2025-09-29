@@ -279,22 +279,45 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       });
   }, []);
 
+  const handleUserTeamChange = useCallback(async (updatedUser: User) => {
+      const allAdmins = state.users.filter(u => u.role && u.role !== 'none');
+      const notificationPromises: Promise<void>[] = [];
+
+      for (const admin of allAdmins) {
+          const prefs = admin.notificationPreferences?.onUserJoin;
+          if (!prefs) continue;
+
+          const isTeamMatch = prefs.teams.includes(updatedUser.team) && !updatedUser.subTeam;
+          const isSubTeamMatch = updatedUser.subTeam && prefs.subTeams.includes(updatedUser.subTeam);
+
+          if (isTeamMatch || isSubTeamMatch) {
+              const message = `${updatedUser.name} has just joined ${isSubTeamMatch ? `${updatedUser.team} > ${updatedUser.subTeam}` : updatedUser.team}.`;
+              notificationPromises.push(addNotification(admin.id, "New User Joined Team", message));
+          }
+      }
+      await Promise.all(notificationPromises);
+  }, [state.users, addNotification]);
+
   const updateUser = useCallback(async (userId: string, data: Partial<User>) => {
     const userDocRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userDocRef);
-    if (!userDoc.exists() || !currentUserProfile) return;
+    const userDocSnap = await getDoc(userDocRef);
+    if (!userDocSnap.exists() || !currentUserProfile) return;
 
-    const originalUserData = userDoc.data() as User;
+    const originalUserData = userDocSnap.data() as User;
     const originalRole = originalUserData.role || 'none';
     const newRole = data.role || originalRole;
 
-    // Firestore does not accept undefined, so we need to clean the object
     const cleanedData = Object.fromEntries(
       Object.entries(data).filter(([, value]) => value !== undefined)
     );
     await updateDoc(userDocRef, cleanedData);
+
+    const updatedUser = { ...originalUserData, ...cleanedData };
+
+    if (data.team !== originalUserData.team || data.subTeam !== originalUserData.subTeam) {
+        await handleUserTeamChange(updatedUser);
+    }
     
-    // If role has changed, send a notification
     if (data.role && newRole !== originalRole) {
       let message = `Your role has been set to ${roleToLabel(newRole)}.`;
       if (newRole === 'executive' && data.teams && data.teams.length > 0) {
@@ -313,9 +336,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         `Updated by ${currentUserProfile.name}. ${message}`
       );
     }
-
-  }, [currentUserProfile, addNotification]);
-
+  }, [currentUserProfile, addNotification, handleUserTeamChange]);
 
   useEffect(() => {
     let unsubs: (() => void)[] = [];
@@ -409,34 +430,30 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const addUser = async (user: User, isNewUser: boolean) => {
     try {
-      const userDocRef = doc(db, 'users', user.id);
-      const userWithTimestamp = {
-          ...user,
-          createdAt: user.createdAt || Date.now(),
-      }
-      await setDoc(userDocRef, userWithTimestamp);
-
-      if (isNewUser) {
-        const allAdmins = state.users.filter(u => u.role && u.role !== 'none');
-        const notificationPromises: Promise<void>[] = [];
-
-        for (const admin of allAdmins) {
-            const prefs = admin.notificationPreferences?.onUserJoin;
-            if (!prefs) continue;
-
-            const isTeamMatch = prefs.teams.includes(user.team) && !user.subTeam;
-            const isSubTeamMatch = user.subTeam && prefs.subTeams.includes(user.subTeam);
-
-            if (isTeamMatch || isSubTeamMatch) {
-                const message = `${user.name} has just joined ${isSubTeamMatch ? `${user.team} > ${user.subTeam}` : user.team}.`;
-                notificationPromises.push(addNotification(admin.id, "New User Joined Team", message));
+        const userDocRef = doc(db, 'users', user.id);
+        
+        let originalUser: User | null = null;
+        if (!isNewUser) {
+            const docSnap = await getDoc(userDocRef);
+            if (docSnap.exists()) {
+                originalUser = docSnap.data() as User;
             }
         }
-        await Promise.all(notificationPromises);
-      }
+        
+        const userWithTimestamp = {
+            ...user,
+            createdAt: user.createdAt || Date.now(),
+        };
+        await setDoc(userDocRef, userWithTimestamp);
+
+        const hasTeamChanged = originalUser && (originalUser.team !== user.team || originalUser.subTeam !== user.subTeam);
+
+        if (isNewUser || hasTeamChanged) {
+            await handleUserTeamChange(userWithTimestamp);
+        }
 
     } catch (error) {
-      console.error("Error adding user:", error);
+      console.error("Error adding/updating user:", error);
       throw error;
     }
   };
@@ -519,5 +536,8 @@ export const useAppContext = () => {
   }
   return context;
 };
+
+    
+
 
     
