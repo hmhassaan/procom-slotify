@@ -2,3 +2,4 @@
 // import './triggers';
 import './flows/notify-flow';
 import './flows/timetable-update-flow';
+import './flows/google-auth-flow';

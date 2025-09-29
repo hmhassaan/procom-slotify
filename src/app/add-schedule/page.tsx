@@ -4,7 +4,7 @@
 
 
 import { useState, useMemo, useEffect } from "react";
-import { BookUser, Search, Eye, ChevronDown, AlertTriangle } from "lucide-react";
+import { BookUser, Search, Eye, ChevronDown, AlertTriangle, Link } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +21,7 @@ import { useAuth } from "@/context/AuthContext";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger, } from "@/components/ui/alert-dialog";
+import { getGoogleAuthUrlFlow } from "@/ai/flows/google-auth-flow";
 
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -253,6 +254,21 @@ export default function AddSchedulePage() {
     }
   };
 
+  const handleConnectCalendar = async () => {
+    if (!currentUser) return;
+    try {
+      const { authUrl } = await getGoogleAuthUrlFlow({ userId: currentUser.uid });
+      window.location.href = authUrl;
+    } catch (error) {
+      console.error('Failed to get Google Auth URL', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not connect to Google Calendar. Please try again later.',
+      });
+    }
+  };
+
 
   if (pageLoading) {
     return (
@@ -461,6 +477,22 @@ export default function AddSchedulePage() {
               </div>
             </div>
 
+            <div className="space-y-4 rounded-lg border p-4">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Link className="w-5 h-5" /> Integrations
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Connect your account to other services.
+              </p>
+              <Button onClick={handleConnectCalendar} variant="outline">
+                <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M21 5.25H3a.75.75 0 00-.75.75v12A2.25 2.25 0 004.5 20.25h15A2.25 2.25 0 0021.75 18V6a.75.75 0 00-.75-.75zM19.5 7.5v1.5H9v-3h9a1.5 1.5 0 011.5 1.5zM4.5 6h3v3H3V6.75A.75.75 0 014.5 6zm0 4.5h15v7.5H4.5z"></path>
+                    <path d="M12 12.75a1.5 1.5 0 100 3 1.5 1.5 0 000-3z"></path>
+                </svg>
+                Connect Google Calendar
+              </Button>
+            </div>
+
             <Button onClick={handleSaveSchedule} className="w-full">
               {isEditing ? "Update Schedule" : "Submit Schedule"}
             </Button>
@@ -470,7 +502,3 @@ export default function AddSchedulePage() {
     </>
   );
 }
-
-    
-
-    
