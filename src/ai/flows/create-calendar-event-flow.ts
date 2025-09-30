@@ -12,7 +12,7 @@ import { google } from 'googleapis';
 import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
-import { zonedTimeToUtc, format as tzFormat } from 'date-fns-tz';
+import { toZonedTime, format as tzFormat } from 'date-fns-tz';
 import { addMinutes } from 'date-fns';
 
 
@@ -45,7 +45,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     }
 
     console.log(`Querying for ${attendeeIds.length} users...`);
-    // Note: Firestore 'in' queries are limited to 10 items. For more, batching would be needed.
+    // Note: Firestore 'in' queries are limited to 30 items. For more, batching would be needed.
     const usersQuery = query(collection(db, 'users'), where('__name__', 'in', attendeeIds));
     const usersSnapshot = await getDocs(usersQuery);
     const usersWithTokens: { user: User, email: string }[] = [];
@@ -73,11 +73,17 @@ export const createCalendarEventFlow = ai.defineFlow(
     const meetingDatePk = new Date(date); // timestamp (ms)
     const ymd = tzFormat(meetingDatePk, 'yyyy-MM-dd', { timeZone });
 
-    // Build local PKT wall times, then convert to UTC instants
-    const startUtc = zonedTimeToUtc(`${ymd}T${startTimeStr}:00`, timeZone);
-    const endUtc = endTimeStr
-      ? zonedTimeToUtc(`${ymd}T${endTimeStr}:00`, timeZone)
-      : addMinutes(startUtc, 50);
+    const localStartDateTime = new Date(`${ymd}T${startTimeStr}:00`);
+    
+    let localEndDateTime;
+    if (endTimeStr) {
+        localEndDateTime = new Date(`${ymd}T${endTimeStr}:00`);
+    } else {
+        localEndDateTime = addMinutes(localStartDateTime, 50);
+    }
+    
+    const startUtc = toZonedTime(localStartDateTime, timeZone);
+    const endUtc = toZonedTime(localEndDateTime, timeZone);
 
     const event = {
       summary: title,
