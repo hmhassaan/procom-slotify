@@ -55,10 +55,23 @@ export const createCalendarEventFlow = ai.defineFlow(
     }
 
     console.log(`Querying for ${allUserIdsToFetch.length} users...`);
-    const usersQuery = query(collection(db, 'users'), where('__name__', 'in', allUserIdsToFetch));
-    const usersSnapshot = await getDocs(usersQuery);
-    const attendeeEmails = usersSnapshot.docs
-      .map(d => d.data() as User)
+
+    // Batch Firestore queries since 'in' operator has a limit of 10
+    const userChunks = [];
+    for (let i = 0; i < allUserIdsToFetch.length; i += 10) {
+      userChunks.push(allUserIdsToFetch.slice(i, i + 10));
+    }
+
+    const allUsers: User[] = [];
+    for (const chunk of userChunks) {
+      const usersQuery = query(collection(db, 'users'), where('__name__', 'in', chunk));
+      const usersSnapshot = await getDocs(usersQuery);
+      usersSnapshot.forEach(d => {
+        allUsers.push(d.data() as User);
+      });
+    }
+
+    const attendeeEmails = allUsers
       .filter(u => u.email)
       .map(u => ({ email: u.email }));
 
@@ -74,35 +87,31 @@ export const createCalendarEventFlow = ai.defineFlow(
       throw new Error(`Invalid time range format: "${time}"`);
     }
 
-    const startTimeStr = startTimeStrRaw.trim();
-    const endTimeStr = endTimeStrRaw?.trim();
-
     const formatTime = (timeStr: string) => {
-      const parts = timeStr.split(':');
-      if (parts.length !== 2) return null;
-      const hour = parts[0].padStart(2, '0');
-      const minute = parts[1].padStart(2, '0');
-      return `${hour}:${minute}`;
+        if (!timeStr) return null;
+        const parts = timeStr.trim().split(':');
+        if (parts.length !== 2) return null;
+        const hour = parts[0].padStart(2, '0');
+        const minute = parts[1].padStart(2, '0');
+        return `${hour}:${minute}`;
     };
 
-    const formattedStartTime = formatTime(startTimeStr);
-    if (!formattedStartTime) {
-      throw new Error(`Invalid start time format: "${startTimeStr}"`);
+    const startTimeStr = formatTime(startTimeStrRaw);
+    const endTimeStr = formatTime(endTimeStrRaw);
+
+    if (!startTimeStr) {
+      throw new Error(`Invalid start time format: "${startTimeStrRaw}"`);
     }
 
-    const ymd = formatInTimeZone(date, 'yyyy-MM-dd', { timeZone });
+    const ymd = formatInTimeZone(date, timeZone, 'yyyy-MM-dd');
 
-    console.log(`Date string: ${ymd}T${formattedStartTime}:00`);
+    console.log(`Date string: ${ymd}T${startTimeStr}:00`);
 
-    const startUtc = fromZonedTime(`${ymd}T${formattedStartTime}:00`, timeZone);
+    const startUtc = fromZonedTime(`${ymd}T${startTimeStr}:00`, timeZone);
 
     let endUtc;
     if (endTimeStr) {
-        const formattedEndTime = formatTime(endTimeStr);
-        if (!formattedEndTime) {
-            throw new Error(`Invalid end time format: "${endTimeStr}"`);
-        }
-        endUtc = fromZonedTime(`${ymd}T${formattedEndTime}:00`, timeZone);
+        endUtc = fromZonedTime(`${ymd}T${endTimeStr}:00`, timeZone);
     } else {
         endUtc = addMinutes(startUtc, 50);
     }
