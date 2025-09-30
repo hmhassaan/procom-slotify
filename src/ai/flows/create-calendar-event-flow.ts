@@ -12,8 +12,8 @@ import { google } from 'googleapis';
 import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
-import { toZonedTime, format as tzFormat } from 'date-fns-tz';
-import { addMinutes, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
+import { zonedTimeToUtc, format as tzFormat } from 'date-fns-tz';
+import { addMinutes } from 'date-fns';
 
 
 const CreateCalendarEventInputSchema = z.object({
@@ -44,7 +44,6 @@ export const createCalendarEventFlow = ai.defineFlow(
         return;
     }
 
-    // Note: Firestore 'in' queries are limited to 30 items. For more, batching would be needed.
     const usersQuery = query(collection(db, 'users'), where('__name__', 'in', attendeeIds));
     const usersSnapshot = await getDocs(usersQuery);
     const usersWithTokens: { user: User, email: string }[] = [];
@@ -63,34 +62,26 @@ export const createCalendarEventFlow = ai.defineFlow(
     console.log(`Found ${usersWithTokens.length} users with Google Calendar tokens.`);
     
     const timeZone = 'Asia/Karachi';
-    const [startTimeStr, endTimeStr] = time.split(/[-–]/).map(s => s ? s.trim() : '');
-
-    if (!startTimeStr) {
-      throw new Error(`Invalid time range format: "${time}". Could not parse start time.`);
+    const [startTimeStrRaw, endTimeStrRaw] = time.split(/[-–]/);
+    if (!startTimeStrRaw) {
+      throw new Error(`Invalid time range format: "${time}"`);
     }
 
-    const [startHour, startMinute] = startTimeStr.split(':').map(Number);
-    if (isNaN(startHour) || isNaN(startMinute)) {
-        throw new Error(`Invalid start time format: "${startTimeStr}". Could not parse hours or minutes.`);
-    }
-    
-    const meetingDateInPKT = toZonedTime(new Date(date), timeZone);
+    const startTimeStr = startTimeStrRaw.trim();
+    const endTimeStr = endTimeStrRaw?.trim();
 
-    let localStartDateTime = setMilliseconds(setSeconds(setMinutes(setHours(meetingDateInPKT, startHour), startMinute), 0), 0);
+    const meetingDate = new Date(date); // timestamp (ms)
+    const ymd = tzFormat(meetingDate, 'yyyy-MM-dd', { timeZone });
+
+    // Build local PKT wall times, then convert to UTC instants
+    const startUtc = zonedTimeToUtc(`${ymd}T${startTimeStr}:00`, timeZone);
     
-    let localEndDateTime;
+    let endUtc;
     if (endTimeStr) {
-      const [endHour, endMinute] = endTimeStr.split(':').map(Number);
-      if (isNaN(endHour) || isNaN(endMinute)) {
-        throw new Error(`Invalid end time format: "${endTimeStr}". Could not parse hours or minutes.`);
-      }
-      localEndDateTime = setMilliseconds(setSeconds(setMinutes(setHours(meetingDateInPKT, endHour), endMinute), 0), 0);
+        endUtc = zonedTimeToUtc(`${ymd}T${endTimeStr}:00`, timeZone);
     } else {
-      localEndDateTime = addMinutes(localStartDateTime, 50);
+        endUtc = addMinutes(startUtc, 50);
     }
-    
-    const startUtc = localStartDateTime;
-    const endUtc = localEndDateTime;
 
     const event = {
       summary: title,
