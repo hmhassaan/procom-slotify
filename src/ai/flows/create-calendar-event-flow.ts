@@ -23,7 +23,11 @@ const CreateCalendarEventInputSchema = z.object({
 export type CreateCalendarEventInput = z.infer<typeof CreateCalendarEventInputSchema>;
 
 const timeTo24Hour = (time: string): { hours: number; minutes: number } => {
-  const [hourStr, minuteStr, ampm] = time.match(/(\d+):(\d+)\s*(AM|PM)/i)!.slice(1);
+  const match = time.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!match) {
+    throw new Error(`Invalid time format provided to timeTo24Hour: "${time}". Expected format like "9:00 AM".`);
+  }
+  const [hourStr, minuteStr, ampm] = match.slice(1);
   let hours = parseInt(hourStr, 10);
   if (ampm.toUpperCase() === 'PM' && hours < 12) {
     hours += 12;
