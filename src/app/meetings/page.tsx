@@ -244,7 +244,32 @@ const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: M
     }
   };
   
-  const meetingIsPast = isPast(new Date(meeting.date));
+    const meetingEndTime = useMemo(() => {
+    if (!meeting.date || !meeting.time) return new Date();
+    
+    // Time format is like "08:00-8:50" or "12:35-1:25"
+    const [startTimeStr, endTimeStr] = meeting.time.split(/[-–]/); // Handle both hyphen and en-dash
+    if (!endTimeStr) {
+      // Fallback for older formats, assume 50 min duration
+      return new Date(new Date(meeting.date).getTime() + 50 * 60 * 1000);
+    }
+    
+    const [endHours, endMinutes] = endTimeStr.split(':').map(Number);
+    
+    const endDate = new Date(meeting.date);
+    endDate.setHours(endHours, endMinutes, 0, 0);
+    
+    // Handle cases where end time is on the next day (e.g. 12:35-1:25)
+    const [startHours] = startTimeStr.split(':').map(Number);
+    if (endHours < startHours) {
+        endDate.setDate(endDate.getDate() + 1);
+    }
+
+    return endDate;
+  }, [meeting.date, meeting.time]);
+  
+  const meetingIsPast = isPast(meetingEndTime);
+
 
   return (
     <Card className={cn(meetingIsPast && "opacity-60")}>
@@ -437,5 +462,7 @@ export default function MeetingsPage() {
     </div>
   );
 }
+
+    
 
     

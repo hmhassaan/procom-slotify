@@ -12,29 +12,28 @@ import { google } from 'googleapis';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
+import {utcToZonedTime} from 'date-fns-tz';
 
 const CreateCalendarEventInputSchema = z.object({
   meetingId: z.string(),
   title: z.string(),
   date: z.number(), // timestamp
-  time: z.string(), // e.g., "9:00 - 9:30"
+  time: z.string(), // e.g., "9:00-9:50"
   attendeeIds: z.array(z.string()),
 });
 export type CreateCalendarEventInput = z.infer<typeof CreateCalendarEventInputSchema>;
 
-const timeTo24Hour = (time: string): { hours: number; minutes: number } => {
-  // Handles formats like "9:00" or "11:40"
-  const [hourStr, minuteStr] = time.split(':');
+
+const parseTime = (timeStr: string): { hours: number, minutes: number } => {
+  const [hourStr, minuteStr] = timeStr.split(':');
   if (!hourStr || !minuteStr) {
-      throw new Error(`Invalid time format provided to timeTo24Hour: "${time}". Expected format like "9:00" or "11:40".`);
+    throw new Error(`Invalid time part format: "${timeStr}". Expected HH:MM.`);
   }
   const hours = parseInt(hourStr, 10);
   const minutes = parseInt(minuteStr, 10);
-
   if (isNaN(hours) || isNaN(minutes)) {
-       throw new Error(`Invalid time format provided to timeTo24Hour: "${time}". Could not parse hours or minutes.`);
+    throw new Error(`Could not parse time part: "${timeStr}".`);
   }
-
   return { hours, minutes };
 };
 
@@ -75,24 +74,46 @@ export const createCalendarEventFlow = ai.defineFlow(
     }
     console.log(`Found ${usersWithTokens.length} users with Google Calendar tokens.`);
     
-    const [startTimeStr] = time.split(' - ');
-    const meetingDate = new Date(date);
-    const { hours, minutes } = timeTo24Hour(startTimeStr);
+    const timeZone = 'Asia/Karachi';
+    const [startTimeStr, endTimeStr] = time.split(/[-–]/); // Handle both hyphen and en-dash
     
-    const eventStartTime = new Date(meetingDate);
-    eventStartTime.setHours(hours, minutes, 0, 0);
+    if (!startTimeStr) {
+        throw new Error(`Invalid time range format: "${time}"`);
+    }
 
-    const eventEndTime = new Date(eventStartTime.getTime() + 30 * 60 * 1000); // Assume 30 min duration
+    const meetingDate = new Date(date);
+    const start = parseTime(startTimeStr);
+    
+    // Create zoned date objects to ensure time is interpreted correctly in PKT
+    const zonedMeetingDate = utcToZonedTime(meetingDate, timeZone);
+    
+    const eventStartTime = new Date(zonedMeetingDate);
+    eventStartTime.setHours(start.hours, start.minutes, 0, 0);
+
+    let eventEndTime;
+    if (endTimeStr) {
+        const end = parseTime(endTimeStr);
+        eventEndTime = new Date(zonedMeetingDate);
+        eventEndTime.setHours(end.hours, end.minutes, 0, 0);
+        // Handle overnight meetings if necessary, though unlikely for this app
+        if (eventEndTime <= eventStartTime) {
+            eventEndTime.setDate(eventEndTime.getDate() + 1);
+        }
+    } else {
+        // Fallback: assume 50 minute duration if no end time
+        eventEndTime = new Date(eventStartTime.getTime() + 50 * 60 * 1000);
+    }
+    
 
     const event = {
       summary: title,
       start: {
         dateTime: eventStartTime.toISOString(),
-        timeZone: 'Asia/Karachi', // You might want to make this configurable
+        timeZone: timeZone,
       },
       end: {
         dateTime: eventEndTime.toISOString(),
-        timeZone: 'Asia/Karachi',
+        timeZone: timeZone,
       },
       attendees: usersWithTokens.map(u => ({ email: u.email })),
       reminders: {
@@ -132,3 +153,5 @@ export const createCalendarEventFlow = ai.defineFlow(
     console.log('Finished createCalendarEventFlow.');
   }
 );
+
+    
