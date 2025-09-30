@@ -4,7 +4,7 @@
 
 
 import { useState, useMemo, useEffect } from "react";
-import { BookUser, Search, Eye, ChevronDown, AlertTriangle, Link } from "lucide-react";
+import { BookUser, Search, Eye, ChevronDown, AlertTriangle, Link, Check } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { useToast } from "@/hooks/use-toast";
@@ -183,6 +183,7 @@ export default function AddSchedulePage() {
       notificationPreferences: finalNotificationPreferences,
       ...(finalRole === 'executive' && finalExecutiveTeams && { teams: finalExecutiveTeams }),
       createdAt: currentUserProfile?.createdAt || Date.now(),
+      googleRefreshToken: currentUserProfile?.googleRefreshToken,
     };
     
     await addUser(userData, !isEditing); // addUser is actually a setDoc, so it works for create and update
@@ -268,6 +269,8 @@ export default function AddSchedulePage() {
       });
     }
   };
+
+  const isCalendarConnected = !!currentUserProfile?.googleRefreshToken;
 
 
   if (pageLoading) {
@@ -478,19 +481,26 @@ export default function AddSchedulePage() {
             </div>
 
             <div className="space-y-4 rounded-lg border p-4">
-              <h3 className="font-semibold flex items-center gap-2">
-                <Link className="w-5 h-5" /> Integrations
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Connect your account to other services.
-              </p>
-              <Button onClick={handleConnectCalendar} variant="outline">
-                <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M21 5.25H3a.75.75 0 00-.75.75v12A2.25 2.25 0 004.5 20.25h15A2.25 2.25 0 0021.75 18V6a.75.75 0 00-.75-.75zM19.5 7.5v1.5H9v-3h9a1.5 1.5 0 011.5 1.5zM4.5 6h3v3H3V6.75A.75.75 0 014.5 6zm0 4.5h15v7.5H4.5z"></path>
-                    <path d="M12 12.75a1.5 1.5 0 100 3 1.5 1.5 0 000-3z"></path>
-                </svg>
-                Connect Google Calendar
-              </Button>
+                <h3 className="font-semibold flex items-center gap-2">
+                    <Link className="w-5 h-5" /> Integrations
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                    Connect your account to other services.
+                </p>
+                {isCalendarConnected ? (
+                    <Button variant="outline" disabled className="border-green-500 text-green-600">
+                        <Check className="w-4 h-4 mr-2" />
+                        Connected to Google Calendar
+                    </Button>
+                ) : (
+                    <Button onClick={handleConnectCalendar} variant="outline">
+                        <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M21 5.25H3a.75.75 0 00-.75.75v12A2.25 2.25 0 004.5 20.25h15A2.25 2.25 0 0021.75 18V6a.75.75 0 00-.75-.75zM19.5 7.5v1.5H9v-3h9a1.5 1.5 0 011.5 1.5zM4.5 6h3v3H3V6.75A.75.75 0 014.5 6zm0 4.5h15v7.5H4.5z"></path>
+                            <path d="M12 12.75a1.5 1.5 0 100 3 1.5 1.5 0 000-3z"></path>
+                        </svg>
+                        Connect Google Calendar
+                    </Button>
+                )}
             </div>
 
             <Button onClick={handleSaveSchedule} className="w-full">

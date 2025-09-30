@@ -315,6 +315,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
     // Trigger Google Calendar event creation flow
     try {
+        console.log("Triggering createCalendarEventFlow...");
         await createCalendarEventFlow({
             meetingId: meetingRef.id,
             title: meetingData.title,
@@ -323,6 +324,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             // Pass all users including organizer
             attendeeIds: allInvitedUserIds
         });
+        console.log("createCalendarEventFlow finished.");
     } catch (e) {
         console.error("Failed to create Google Calendar event:", e);
         // Don't throw, as the core meeting is already created. Maybe show a non-blocking toast.
@@ -368,7 +370,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setState(prevState => ({ ...prevState, loading: true }));
     
     unsubs.push(onSnapshot(collection(db, 'users'), (snapshot) => {
-        const usersData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, createdAt: doc.data().createdAt || 0 } as User)).sort((a, b) => b.createdAt - a.createdAt);
+        const usersData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, createdAt: doc.data().createdAt || 0, googleRefreshToken: doc.data().googleRefreshToken || null } as User)).sort((a, b) => b.createdAt - a.createdAt);
         setState(prevState => ({ ...prevState, users: usersData }));
     }));
 
@@ -443,8 +445,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             const docSnap = await getDoc(userDocRef);
             if (docSnap.exists()) originalUser = docSnap.data() as User;
         }
-        const userWithTimestamp = { ...user, createdAt: user.createdAt || Date.now() };
-        await setDoc(userDocRef, userWithTimestamp);
+        
+        const userDataToSave = { ...user };
+        // Ensure we don't accidentally wipe the refresh token on a normal profile update
+        if (!isNewUser && originalUser?.googleRefreshToken && !userDataToSave.googleRefreshToken) {
+            userDataToSave.googleRefreshToken = originalUser.googleRefreshToken;
+        }
+
+        const userWithTimestamp = { ...userDataToSave, createdAt: user.createdAt || Date.now() };
+        await setDoc(userDocRef, userWithTimestamp, { merge: true });
+        
         if (isNewUser || (originalUser && (originalUser.team !== user.team || originalUser.subTeam !== user.subTeam))) {
             await handleUserTeamChange(userWithTimestamp);
         }

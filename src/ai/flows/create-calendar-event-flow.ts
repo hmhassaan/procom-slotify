@@ -42,6 +42,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     outputSchema: z.void(),
   },
   async ({ title, date, time, attendeeIds }) => {
+    console.log('Starting createCalendarEventFlow...');
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.GOOGLE_REDIRECT_URI) {
       console.warn('Google OAuth credentials are not configured. Skipping calendar event creation.');
       return;
@@ -52,6 +53,7 @@ export const createCalendarEventFlow = ai.defineFlow(
         return;
     }
 
+    console.log(`Querying for ${attendeeIds.length} users...`);
     const usersQuery = query(collection(db, 'users'), where('__name__', 'in', attendeeIds));
     const usersSnapshot = await getDocs(usersQuery);
     const usersWithTokens: { user: User, email: string }[] = [];
@@ -67,6 +69,7 @@ export const createCalendarEventFlow = ai.defineFlow(
       console.log('No attendees have connected their Google Calendar. Skipping event creation.');
       return;
     }
+    console.log(`Found ${usersWithTokens.length} users with Google Calendar tokens.`);
     
     const [startTimeStr] = time.split(' - ');
     const meetingDate = new Date(date);
@@ -97,7 +100,10 @@ export const createCalendarEventFlow = ai.defineFlow(
       },
     };
 
+    console.log('Constructed event object:', event);
+
     for (const { user } of usersWithTokens) {
+        console.log(`Processing calendar event for ${user.email}...`);
         const oauth2Client = new google.auth.OAuth2(
             process.env.GOOGLE_CLIENT_ID,
             process.env.GOOGLE_CLIENT_SECRET,
@@ -119,5 +125,6 @@ export const createCalendarEventFlow = ai.defineFlow(
             // This might happen if the token is revoked. We should handle this gracefully.
         }
     }
+    console.log('Finished createCalendarEventFlow.');
   }
 );
