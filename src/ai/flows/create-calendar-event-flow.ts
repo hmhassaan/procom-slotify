@@ -13,7 +13,7 @@ import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/fire
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
 import { toZonedTime, format as tzFormat } from 'date-fns-tz';
-import { addMinutes } from 'date-fns';
+import { addMinutes, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
 
 
 const CreateCalendarEventInputSchema = z.object({
@@ -44,7 +44,6 @@ export const createCalendarEventFlow = ai.defineFlow(
         return;
     }
 
-    console.log(`Querying for ${attendeeIds.length} users...`);
     // Note: Firestore 'in' queries are limited to 30 items. For more, batching would be needed.
     const usersQuery = query(collection(db, 'users'), where('__name__', 'in', attendeeIds));
     const usersSnapshot = await getDocs(usersQuery);
@@ -70,28 +69,22 @@ export const createCalendarEventFlow = ai.defineFlow(
       throw new Error(`Invalid time range format: "${time}". Could not parse start time.`);
     }
 
-    const meetingDatePk = new Date(date);
-    const ymd = tzFormat(meetingDatePk, 'yyyy-MM-dd', { timeZone });
-
-    // Helper to zero-pad time components
-    const formatTimePart = (part: string) => part.padStart(2, '0');
-
-    const [startHour, startMinute] = startTimeStr.split(':').map(formatTimePart);
-    const startDateTimeString = `${ymd}T${startHour}:${startMinute}:00`;
-    const localStartDateTime = toZonedTime(startDateTimeString, timeZone);
-
-    if (isNaN(localStartDateTime.getTime())) {
-      throw new Error(`Failed to create a valid start date from string: "${startDateTimeString}"`);
+    const [startHour, startMinute] = startTimeStr.split(':').map(Number);
+    if (isNaN(startHour) || isNaN(startMinute)) {
+        throw new Error(`Invalid start time format: "${startTimeStr}". Could not parse hours or minutes.`);
     }
+    
+    const meetingDateInPKT = toZonedTime(new Date(date), timeZone);
 
+    let localStartDateTime = setMilliseconds(setSeconds(setMinutes(setHours(meetingDateInPKT, startHour), startMinute), 0), 0);
+    
     let localEndDateTime;
     if (endTimeStr) {
-      const [endHour, endMinute] = endTimeStr.split(':').map(formatTimePart);
-      const endDateTimeString = `${ymd}T${endHour}:${endMinute}:00`;
-      localEndDateTime = toZonedTime(endDateTimeString, timeZone);
-      if (isNaN(localEndDateTime.getTime())) {
-        throw new Error(`Failed to create a valid end date from string: "${endDateTimeString}"`);
+      const [endHour, endMinute] = endTimeStr.split(':').map(Number);
+      if (isNaN(endHour) || isNaN(endMinute)) {
+        throw new Error(`Invalid end time format: "${endTimeStr}". Could not parse hours or minutes.`);
       }
+      localEndDateTime = setMilliseconds(setSeconds(setMinutes(setHours(meetingDateInPKT, endHour), endMinute), 0), 0);
     } else {
       localEndDateTime = addMinutes(localStartDateTime, 50);
     }
@@ -113,7 +106,7 @@ export const createCalendarEventFlow = ai.defineFlow(
       },
     };
 
-    console.log('Constructed event object:', event);
+    console.log('Constructed event object:', JSON.stringify(event, null, 2));
     
     let googleIcalUid: string | undefined = undefined;
 
