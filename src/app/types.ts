@@ -79,4 +79,5 @@ export type Meeting = {
   organizerName: string;
   attendees: MeetingAttendee[];
   createdAt: number;
+  googleIcalUid?: string;
 };

@@ -10,6 +10,7 @@ import { useAuth } from './AuthContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { format } from 'date-fns';
 import { createCalendarEventFlow } from '@/ai/flows/create-calendar-event-flow';
+import { deleteCalendarEventFlow } from '@/ai/flows/delete-calendar-event-flow';
 
 export type { User, CategoryData, UserRole, Position, Notification, Meeting };
 export type SlotCoursesIndex = Record<string, Record<string, string[]>>;
@@ -359,11 +360,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     
     await deleteDoc(meetingRef);
     
-    const notificationPromises = meeting.attendees.map(attendee => 
-      addNotification(attendee.userId, "Meeting Cancelled", `The meeting "${meeting.title}" on ${format(new Date(meeting.date), "EEE, MMM d")} at ${meeting.time} has been cancelled.`)
-    );
+    const notificationPromises = meeting.attendees
+        .filter(a => a.userId !== currentUserProfile?.id)
+        .map(attendee => 
+            addNotification(attendee.userId, "Meeting Cancelled", `The meeting "${meeting.title}" on ${format(new Date(meeting.date), "EEE, MMM d")} at ${meeting.time} has been cancelled.`)
+        );
     await Promise.all(notificationPromises);
-  }, [addNotification]);
+
+    if (meeting.googleIcalUid) {
+        try {
+            console.log("Triggering deleteCalendarEventFlow...");
+            await deleteCalendarEventFlow({
+                googleIcalUid: meeting.googleIcalUid,
+                attendeeIds: meeting.attendees.map(a => a.userId),
+            });
+            console.log("deleteCalendarEventFlow finished.");
+        } catch (e) {
+            console.error("Failed to delete Google Calendar event:", e);
+        }
+    }
+  }, [addNotification, currentUserProfile]);
 
   useEffect(() => {
     let unsubs: (() => void)[] = [];
@@ -494,5 +510,3 @@ export const useAppContext = () => {
   if (context === undefined) throw new Error('useAppContext must be used within an AppProvider');
   return context;
 };
-
-    

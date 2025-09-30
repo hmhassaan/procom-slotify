@@ -9,7 +9,7 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { google } from 'googleapis';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
 import {toZonedTime} from 'date-fns-tz';
@@ -44,7 +44,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     inputSchema: CreateCalendarEventInputSchema,
     outputSchema: z.void(),
   },
-  async ({ title, date, time, attendeeIds }) => {
+  async ({ meetingId, title, date, time, attendeeIds }) => {
     console.log('Starting createCalendarEventFlow...');
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.GOOGLE_REDIRECT_URI) {
       console.warn('Google OAuth credentials are not configured. Skipping calendar event creation.');
@@ -126,6 +126,8 @@ export const createCalendarEventFlow = ai.defineFlow(
     };
 
     console.log('Constructed event object:', event);
+    
+    let googleIcalUid: string | undefined = undefined;
 
     for (const { user } of usersWithTokens) {
         console.log(`Processing calendar event for ${user.email}...`);
@@ -139,17 +141,31 @@ export const createCalendarEventFlow = ai.defineFlow(
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
         
         try {
-            await calendar.events.insert({
+            const createdEvent = await calendar.events.insert({
                 calendarId: 'primary',
                 requestBody: event,
                 sendNotifications: true,
             });
             console.log(`Successfully created calendar event for ${user.email}`);
+
+            if (!googleIcalUid && createdEvent.data.iCalUID) {
+              googleIcalUid = createdEvent.data.iCalUID;
+              console.log(`Captured iCalUID: ${googleIcalUid}`);
+            }
+
         } catch (error: any) {
             console.error(`Failed to create calendar event for ${user.email}:`, error.message);
             // This might happen if the token is revoked. We should handle this gracefully.
         }
     }
+
+    if (googleIcalUid) {
+      console.log(`Updating meeting ${meetingId} with iCalUID...`);
+      const meetingRef = doc(db, 'meetings', meetingId);
+      await updateDoc(meetingRef, { googleIcalUid: googleIcalUid });
+      console.log('Successfully updated meeting with iCalUID.');
+    }
+
     console.log('Finished createCalendarEventFlow.');
   }
 );
