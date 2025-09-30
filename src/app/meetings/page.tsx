@@ -33,6 +33,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
     const { users, currentUserProfile, createMeeting, canViewUser, teams, subTeams, positions, timeSlots } = useAppContext();
     const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
     const [meetingTitle, setMeetingTitle] = useState("");
     const [selectedDate, setSelectedDate] = useState<Date | undefined>();
     const [selectedTime, setSelectedTime] = useState("");
@@ -44,16 +45,19 @@ const ScheduleMeetingFromMeetingsPage = () => {
             setSelectedUserIds([]);
             setSelectedDate(undefined);
             setSelectedTime("");
+            setIsCreating(false);
         }
     }, [isOpen]);
   
     const handleCreateMeeting = async () => {
+        if (isCreating) return;
         if (!meetingTitle.trim()) { toast({ variant: "destructive", title: "Title is required" }); return; }
         if (!selectedDate) { toast({ variant: "destructive", title: "Date is required" }); return; }
         if (!selectedTime) { toast({ variant: "destructive", title: "Time is required" }); return; }
         if (selectedUserIds.length === 0) { toast({ variant: "destructive", title: "Select at least one member" }); return; }
         if (!currentUserProfile) return;
   
+        setIsCreating(true);
         try {
             await createMeeting({ title: meetingTitle, date: selectedDate.getTime(), time: selectedTime, attendeeIds: selectedUserIds });
             toast({ title: "Meeting Scheduled", description: "Invitations have been sent." });
@@ -61,6 +65,8 @@ const ScheduleMeetingFromMeetingsPage = () => {
         } catch (e) {
             console.error(e);
             toast({ variant: "destructive", title: "Error", description: "Could not schedule meeting." });
+        } finally {
+            setIsCreating(false);
         }
     };
   
@@ -209,8 +215,8 @@ const ScheduleMeetingFromMeetingsPage = () => {
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
-                    <Button onClick={handleCreateMeeting}>Create Meeting & Notify</Button>
+                    <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isCreating}>Cancel</Button>
+                    <Button onClick={handleCreateMeeting} disabled={isCreating}>{isCreating ? "Creating..." : "Create Meeting & Notify"}</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
