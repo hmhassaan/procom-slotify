@@ -64,7 +64,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     console.log(`Found ${usersWithTokens.length} users with Google Calendar tokens.`);
     
     const timeZone = 'Asia/Karachi';
-    const [startTimeStr, endTimeStr] = time.split(/[-–]/).map(s => s.trim());
+    const [startTimeStr, endTimeStr] = time.split(/[-–]/).map(s => s ? s.trim() : '');
 
     if (!startTimeStr) {
       throw new Error(`Invalid time range format: "${time}". Could not parse start time.`);
