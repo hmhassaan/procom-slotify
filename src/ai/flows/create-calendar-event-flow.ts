@@ -12,7 +12,7 @@ import { google } from 'googleapis';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
-import {utcToZonedTime} from 'date-fns-tz';
+import {toZonedTime} from 'date-fns-tz';
 
 const CreateCalendarEventInputSchema = z.object({
   meetingId: z.string(),
@@ -85,7 +85,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     const start = parseTime(startTimeStr);
     
     // Create zoned date objects to ensure time is interpreted correctly in PKT
-    const zonedMeetingDate = utcToZonedTime(meetingDate, timeZone);
+    const zonedMeetingDate = toZonedTime(meetingDate, timeZone);
     
     const eventStartTime = new Date(zonedMeetingDate);
     eventStartTime.setHours(start.hours, start.minutes, 0, 0);
@@ -153,5 +153,3 @@ export const createCalendarEventFlow = ai.defineFlow(
     console.log('Finished createCalendarEventFlow.');
   }
 );
-
-    
