@@ -12,7 +12,7 @@ import { google } from 'googleapis';
 import { collection, getDocs, query, where, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
-import { fromZonedTime, format as formatInTimeZone } from 'date-fns-tz';
+import { fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { addMinutes } from 'date-fns';
 
 
@@ -87,7 +87,7 @@ export const createCalendarEventFlow = ai.defineFlow(
       throw new Error(`Invalid time range format: "${time}"`);
     }
 
-    const formatTime = (timeStr: string) => {
+    const formatTime = (timeStr: string | undefined) => {
         if (!timeStr) return null;
         const parts = timeStr.trim().split(':');
         if (parts.length !== 2) return null;
@@ -104,7 +104,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     }
 
     const meetingDate = new Date(date);
-    const ymd = formatInTimeZone(meetingDate, timeZone, 'yyyy-MM-dd');
+    const ymd = formatInTimeZone(meetingDate, 'yyyy-MM-dd', { timeZone });
 
     console.log(`Date string: ${ymd}T${startTimeStr}:00`);
 
