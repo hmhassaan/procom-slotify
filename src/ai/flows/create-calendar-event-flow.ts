@@ -71,15 +71,26 @@ export const createCalendarEventFlow = ai.defineFlow(
     const startTimeStr = startTimeStrRaw.trim();
     const endTimeStr = endTimeStrRaw?.trim();
 
+    // Ensure time format is HH:MM (pad with zeros if needed)
+    const formatTime = (timeStr: string) => {
+      const [hour, minute] = timeStr.split(':');
+      return `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+    };
+
+    const formattedStartTime = formatTime(startTimeStr);
+
     const meetingDate = new Date(date); // timestamp (ms)
     const ymd = tzFormat(meetingDate, 'yyyy-MM-dd', { timeZone });
 
+    console.log(`Date string: ${ymd}T${formattedStartTime}:00`);
+
     // Build local PKT wall times, then convert to UTC instants
-    const startUtc = fromZonedTime(`${ymd}T${startTimeStr}:00`, timeZone);
-    
+    const startUtc = fromZonedTime(`${ymd} ${formattedStartTime}:00`, timeZone);
+
     let endUtc;
     if (endTimeStr) {
-        endUtc = fromZonedTime(`${ymd}T${endTimeStr}:00`, timeZone);
+        const formattedEndTime = formatTime(endTimeStr);
+        endUtc = fromZonedTime(`${ymd} ${formattedEndTime}:00`, timeZone);
     } else {
         endUtc = addMinutes(startUtc, 50);
     }
