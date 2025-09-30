@@ -9,10 +9,10 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { google } from 'googleapis';
-import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
-import { fromZonedTime, formatInTimeZone } from 'date-fns-tz';
+import { fromZonedTime, format as formatInTimeZone } from 'date-fns-tz';
 import { addMinutes } from 'date-fns';
 
 
@@ -21,6 +21,7 @@ const CreateCalendarEventInputSchema = z.object({
   title: z.string(),
   date: z.number(), // timestamp
   time: z.string(), // e.g., "9:00-9:50"
+  organizerId: z.string(),
   attendeeIds: z.array(z.string()),
 });
 export type CreateCalendarEventInput = z.infer<typeof CreateCalendarEventInputSchema>;
@@ -32,35 +33,42 @@ export const createCalendarEventFlow = ai.defineFlow(
     inputSchema: CreateCalendarEventInputSchema,
     outputSchema: z.void(),
   },
-  async ({ meetingId, title, date, time, attendeeIds }) => {
+  async ({ meetingId, title, date, time, organizerId, attendeeIds }) => {
     console.log('Starting createCalendarEventFlow...');
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.GOOGLE_REDIRECT_URI) {
       console.warn('Google OAuth credentials are not configured. Skipping calendar event creation.');
       return;
     }
     
-    if (attendeeIds.length === 0) {
+    // The organizer is the one who creates the event.
+    const organizerDoc = await getDoc(doc(db, 'users', organizerId));
+    if (!organizerDoc.exists() || !organizerDoc.data().googleRefreshToken) {
+      console.log(`Organizer ${organizerId} has not connected their Google Calendar. Skipping event creation.`);
+      return;
+    }
+    const organizer = organizerDoc.data() as User;
+    console.log(`Organizer found: ${organizer.email}`);
+    
+    // Fetch all other attendees to invite them.
+    const allUserIdsToFetch = [...new Set([organizerId, ...attendeeIds])];
+    if (allUserIdsToFetch.length === 0) {
         console.log('No attendees to invite. Skipping calendar event creation.');
         return;
     }
 
-    console.log(`Querying for ${attendeeIds.length} users...`);
-    const usersQuery = query(collection(db, 'users'), where('__name__', 'in', attendeeIds));
+    console.log(`Querying for ${allUserIdsToFetch.length} users...`);
+    const usersQuery = query(collection(db, 'users'), where('__name__', 'in', allUserIdsToFetch));
     const usersSnapshot = await getDocs(usersQuery);
-    const usersWithTokens: { user: User, email: string }[] = [];
-    
-    usersSnapshot.forEach(doc => {
-      const user = doc.data() as User;
-      if (user.googleRefreshToken && user.email) {
-        usersWithTokens.push({ user, email: user.email });
-      }
-    });
+    const attendeeEmails = usersSnapshot.docs
+      .map(d => d.data() as User)
+      .filter(u => u.email)
+      .map(u => ({ email: u.email }));
 
-    if (usersWithTokens.length === 0) {
-      console.log('No attendees have connected their Google Calendar. Skipping event creation.');
-      return;
+    if (attendeeEmails.length === 0) {
+        console.log('No valid attendee emails found. Skipping event creation.');
+        return;
     }
-    console.log(`Found ${usersWithTokens.length} users with Google Calendar tokens.`);
+    console.log(`Found ${attendeeEmails.length} attendees with emails.`);
     
     const timeZone = 'Asia/Karachi';
     const [startTimeStrRaw, endTimeStrRaw] = time.split(/[-–]/);
@@ -73,11 +81,17 @@ export const createCalendarEventFlow = ai.defineFlow(
 
     // Ensure time format is HH:MM (pad with zeros if needed)
     const formatTime = (timeStr: string) => {
-      const [hour, minute] = timeStr.split(':');
-      return `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+      const parts = timeStr.split(':');
+      if (parts.length !== 2) return null;
+      const hour = parts[0].padStart(2, '0');
+      const minute = parts[1].padStart(2, '0');
+      return `${hour}:${minute}`;
     };
 
     const formattedStartTime = formatTime(startTimeStr);
+    if (!formattedStartTime) {
+      throw new Error(`Invalid start time format: "${startTimeStr}"`);
+    }
 
     const ymd = formatInTimeZone(date, timeZone, 'yyyy-MM-dd');
 
@@ -89,6 +103,9 @@ export const createCalendarEventFlow = ai.defineFlow(
     let endUtc;
     if (endTimeStr) {
         const formattedEndTime = formatTime(endTimeStr);
+        if (!formattedEndTime) {
+            throw new Error(`Invalid end time format: "${endTimeStr}"`);
+        }
         endUtc = fromZonedTime(`${ymd} ${formattedEndTime}:00`, timeZone);
     } else {
         endUtc = addMinutes(startUtc, 50);
@@ -102,7 +119,7 @@ export const createCalendarEventFlow = ai.defineFlow(
       summary: title,
       start: { dateTime: startUtc.toISOString(), timeZone },
       end:   { dateTime: endUtc.toISOString(),   timeZone },
-      attendees: usersWithTokens.map(u => ({ email: u.email })),
+      attendees: attendeeEmails,
       reminders: {
         useDefault: false,
         overrides: [
@@ -114,42 +131,37 @@ export const createCalendarEventFlow = ai.defineFlow(
 
     console.log('Constructed event object:', JSON.stringify(event, null, 2));
     
-    let googleIcalUid: string | undefined = undefined;
+    console.log(`Creating calendar event using organizer's (${organizer.email}) account...`);
+    const oauth2Client = new google.auth.OAuth2(
+        process.env.GOOGLE_CLIENT_ID,
+        process.env.GOOGLE_CLIENT_SECRET,
+        process.env.GOOGLE_REDIRECT_URI
+    );
+    oauth2Client.setCredentials({ refresh_token: organizer.googleRefreshToken });
+    
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    
+    try {
+        const createdEvent = await calendar.events.insert({
+            calendarId: 'primary',
+            requestBody: event,
+            sendUpdates: 'all',
+        });
+        console.log(`Successfully created calendar event for all attendees.`);
 
-    for (const { user } of usersWithTokens) {
-        console.log(`Processing calendar event for ${user.email}...`);
-        const oauth2Client = new google.auth.OAuth2(
-            process.env.GOOGLE_CLIENT_ID,
-            process.env.GOOGLE_CLIENT_SECRET,
-            process.env.GOOGLE_REDIRECT_URI
-        );
-        oauth2Client.setCredentials({ refresh_token: user.googleRefreshToken });
-        
-        const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-        
-        try {
-            const createdEvent = await calendar.events.insert({
-                calendarId: 'primary',
-                requestBody: event,
-                sendUpdates: 'all',
-            });
-            console.log(`Successfully created calendar event for ${user.email}`);
-
-            if (!googleIcalUid && createdEvent.data.iCalUID) {
-              googleIcalUid = createdEvent.data.iCalUID;
-              console.log(`Captured iCalUID: ${googleIcalUid}`);
-            }
-
-        } catch (error: any) {
-            console.error(`Failed to create calendar event for ${user.email}:`, error.message);
+        if (createdEvent.data.iCalUID) {
+          const googleIcalUid = createdEvent.data.iCalUID;
+          console.log(`Captured iCalUID: ${googleIcalUid}`);
+          console.log(`Updating meeting ${meetingId} with iCalUID...`);
+          const meetingRef = doc(db, 'meetings', meetingId);
+          await updateDoc(meetingRef, { googleIcalUid: googleIcalUid });
+          console.log('Successfully updated meeting with iCalUID.');
         }
-    }
 
-    if (googleIcalUid) {
-      console.log(`Updating meeting ${meetingId} with iCalUID...`);
-      const meetingRef = doc(db, 'meetings', meetingId);
-      await updateDoc(meetingRef, { googleIcalUid: googleIcalUid });
-      console.log('Successfully updated meeting with iCalUID.');
+    } catch (error: any) {
+        console.error(`Failed to create calendar event:`, error.message);
+        // We might want to re-throw here to let the caller know something went wrong
+        throw new Error(`Failed to create Google Calendar event: ${error.message}`);
     }
 
     console.log('Finished createCalendarEventFlow.');

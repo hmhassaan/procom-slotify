@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -14,7 +13,7 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { PlusCircle, Trash2, Filter, Star, ChevronDown, CalendarPlus, Check, Calendar as CalendarIcon } from "lucide-react";
+import { PlusCircle, Trash2, Filter, Star, ChevronDown, CalendarPlus, Calendar as CalendarIcon } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
@@ -105,13 +104,14 @@ const useViewSchedule = () => {
 };
 
 
-const ScheduleMeetingDialog = ({ day, time, filteredUsers }: { day: string, time: string, filteredUsers: User[] }) => {
+const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: string, time: string, filteredUsers: User[], trigger: React.ReactNode }) => {
   const { users, currentUserProfile, createMeeting, canViewUser, teams, subTeams, positions } = useAppContext();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [meetingTitle, setMeetingTitle] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -120,6 +120,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers }: { day: string, time
             .map(u => u.id);
         setSelectedUserIds(defaultSelectedIds);
         setMeetingTitle("");
+        setIsCreating(false);
 
         // Find the next occurrence of the selected day
         const today = new Date();
@@ -134,6 +135,8 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers }: { day: string, time
   }, [isOpen, filteredUsers, currentUserProfile, day]);
 
   const handleCreateMeeting = async () => {
+    if (isCreating) return;
+
     if (!meetingTitle.trim()) {
       toast({ variant: "destructive", title: "Title is required" });
       return;
@@ -148,6 +151,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers }: { day: string, time
     }
     if (!currentUserProfile) return;
 
+    setIsCreating(true);
     try {
       await createMeeting({
         title: meetingTitle,
@@ -160,6 +164,8 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers }: { day: string, time
     } catch (e) {
       console.error(e);
       toast({ variant: "destructive", title: "Error", description: "Could not schedule meeting." });
+    } finally {
+        setIsCreating(false);
     }
   };
 
@@ -217,7 +223,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers }: { day: string, time
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" className="w-full mt-2 gap-2"><CalendarPlus /> Schedule Meeting</Button>
+        {trigger}
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -306,8 +312,8 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers }: { day: string, time
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreateMeeting}>Create Meeting & Notify</Button>
+          <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isCreating}>Cancel</Button>
+          <Button onClick={handleCreateMeeting} disabled={isCreating}>{isCreating ? 'Creating...' : 'Create Meeting & Notify'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -579,11 +585,23 @@ export default function ViewSchedulePage() {
                         {timeSlots.map(time => {
                           const userMeetings = userMeetingsBySlot.get(`${day}-${time}`) || [];
                           return (
-                          <div key={time} className="border rounded-xl bg-card shadow-md transition-shadow hover:shadow-xl">
-                            <div className="p-3 border-b bg-muted/50 rounded-t-xl">
+                          <div key={time} className="border rounded-xl bg-card shadow-md transition-shadow hover:shadow-xl flex flex-col">
+                            <div className="p-3 border-b bg-muted/50 rounded-t-xl flex items-center justify-between">
                                 <h4 className="font-semibold text-center text-sm">{time}</h4>
+                                {hasAdminPrivileges && (
+                                    <ScheduleMeetingDialog 
+                                        day={day} 
+                                        time={time} 
+                                        filteredUsers={filteredUsers}
+                                        trigger={
+                                            <Button size="icon" variant="ghost" className="h-7 w-7">
+                                                <CalendarPlus className="h-4 w-4" />
+                                            </Button>
+                                        }
+                                    />
+                                )}
                             </div>
-                            <div className="p-3 space-y-3">
+                            <div className="p-3 space-y-3 flex-grow">
                               {userMeetings.length > 0 && (
                                 <div className="border-l-4 border-blue-500 pl-2 text-sm">
                                   <p className="font-bold text-blue-600">Your Meeting:</p>
@@ -627,7 +645,6 @@ export default function ViewSchedulePage() {
                                  </div>
                               </div>
                             </div>
-                             {hasAdminPrivileges && <div className="p-3 border-t"><ScheduleMeetingDialog day={day} time={time} filteredUsers={filteredUsers} /></div>}
                           </div>
                         )})}
                       </div>

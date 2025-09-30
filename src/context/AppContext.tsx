@@ -322,8 +322,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             title: meetingData.title,
             date: meetingData.date,
             time: meetingData.time,
-            // Pass all users including organizer
-            attendeeIds: allInvitedUserIds
+            organizerId: currentUserProfile.id,
+            attendeeIds: meetingData.attendeeIds
         });
         console.log("createCalendarEventFlow finished.");
     } catch (e) {
