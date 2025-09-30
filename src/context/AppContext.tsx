@@ -363,7 +363,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const notificationPromises = meeting.attendees
         .filter(a => a.userId !== currentUserProfile?.id)
         .map(attendee => 
-            addNotification(attendee.userId, "Meeting Cancelled", `The meeting "${meeting.title}" on ${format(new Date(meeting.date), "EEE, MMM d")} at ${meeting.time} has been cancelled.`)
+            addNotification(attendee.userId, "Meeting Cancelled", `The meeting "${meeting.title}" on ${format(new Date(meeting.date), "EEE, MMM d 'at' h:mm a")} has been cancelled.`)
         );
     await Promise.all(notificationPromises);
 
