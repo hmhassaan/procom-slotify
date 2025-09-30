@@ -12,7 +12,9 @@ import { google } from 'googleapis';
 import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
-import { toZonedTime, format } from 'date-fns-tz';
+import { zonedTimeToUtc, format as tzFormat } from 'date-fns-tz';
+import { addMinutes } from 'date-fns';
+
 
 const CreateCalendarEventInputSchema = z.object({
   meetingId: z.string(),
@@ -22,20 +24,6 @@ const CreateCalendarEventInputSchema = z.object({
   attendeeIds: z.array(z.string()),
 });
 export type CreateCalendarEventInput = z.infer<typeof CreateCalendarEventInputSchema>;
-
-
-const parseTime = (timeStr: string): { hours: number, minutes: number } => {
-  const [hourStr, minuteStr] = timeStr.split(':');
-  if (!hourStr || !minuteStr) {
-    throw new Error(`Invalid time part format: "${timeStr}". Expected HH:MM.`);
-  }
-  const hours = parseInt(hourStr, 10);
-  const minutes = parseInt(minuteStr, 10);
-  if (isNaN(hours) || isNaN(minutes)) {
-    throw new Error(`Could not parse time part: "${timeStr}".`);
-  }
-  return { hours, minutes };
-};
 
 
 export const createCalendarEventFlow = ai.defineFlow(
@@ -57,6 +45,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     }
 
     console.log(`Querying for ${attendeeIds.length} users...`);
+    // Note: Firestore 'in' queries are limited to 10 items. For more, batching would be needed.
     const usersQuery = query(collection(db, 'users'), where('__name__', 'in', attendeeIds));
     const usersSnapshot = await getDocs(usersQuery);
     const usersWithTokens: { user: User, email: string }[] = [];
@@ -75,44 +64,25 @@ export const createCalendarEventFlow = ai.defineFlow(
     console.log(`Found ${usersWithTokens.length} users with Google Calendar tokens.`);
     
     const timeZone = 'Asia/Karachi';
-    const [startTimeStr, endTimeStr] = time.split(/[-–]/); // Handle both hyphen and en-dash
-    
-    if (!startTimeStr) {
-        throw new Error(`Invalid time range format: "${time}"`);
-    }
+    const [startTimeStrRaw, endTimeStrRaw] = time.split(/[-–]/);
+    if (!startTimeStrRaw) throw new Error(`Invalid time range format: "${time}"`);
 
-    const meetingDate = new Date(date);
-    const start = parseTime(startTimeStr);
-    
-    // Create a zoned date object to ensure time is interpreted correctly in PKT
-    let zonedStartTime = toZonedTime(meetingDate, timeZone);
-    zonedStartTime.setHours(start.hours, start.minutes, 0, 0);
+    const startTimeStr = startTimeStrRaw.trim();
+    const endTimeStr = endTimeStrRaw?.trim();
 
-    let zonedEndTime;
-    if (endTimeStr) {
-        const end = parseTime(endTimeStr);
-        zonedEndTime = toZonedTime(meetingDate, timeZone);
-        zonedEndTime.setHours(end.hours, end.minutes, 0, 0);
-        // Handle overnight meetings if necessary, though unlikely for this app
-        if (zonedEndTime <= zonedStartTime) {
-            zonedEndTime.setDate(zonedEndTime.getDate() + 1);
-        }
-    } else {
-        // Fallback: assume 50 minute duration if no end time
-        zonedEndTime = new Date(zonedStartTime.getTime() + 50 * 60 * 1000);
-    }
-    
+    const meetingDatePk = new Date(date); // timestamp (ms)
+    const ymd = tzFormat(meetingDatePk, 'yyyy-MM-dd', { timeZone });
+
+    // Build local PKT wall times, then convert to UTC instants
+    const startUtc = zonedTimeToUtc(`${ymd}T${startTimeStr}:00`, timeZone);
+    const endUtc = endTimeStr
+      ? zonedTimeToUtc(`${ymd}T${endTimeStr}:00`, timeZone)
+      : addMinutes(startUtc, 50);
 
     const event = {
       summary: title,
-      start: {
-        dateTime: zonedStartTime.toISOString(),
-        timeZone: timeZone,
-      },
-      end: {
-        dateTime: zonedEndTime.toISOString(),
-        timeZone: timeZone,
-      },
+      start: { dateTime: startUtc.toISOString(), timeZone },
+      end:   { dateTime: endUtc.toISOString(),   timeZone },
       attendees: usersWithTokens.map(u => ({ email: u.email })),
       reminders: {
         useDefault: false,
@@ -142,7 +112,7 @@ export const createCalendarEventFlow = ai.defineFlow(
             const createdEvent = await calendar.events.insert({
                 calendarId: 'primary',
                 requestBody: event,
-                sendNotifications: true,
+                sendUpdates: 'all',
             });
             console.log(`Successfully created calendar event for ${user.email}`);
 
@@ -153,7 +123,6 @@ export const createCalendarEventFlow = ai.defineFlow(
 
         } catch (error: any) {
             console.error(`Failed to create calendar event for ${user.email}:`, error.message);
-            // This might happen if the token is revoked. We should handle this gracefully.
         }
     }
 
