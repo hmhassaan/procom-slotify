@@ -58,8 +58,8 @@ export const createCalendarEventFlow = ai.defineFlow(
 
     // Batch Firestore queries since 'in' operator has a limit of 10
     const userChunks = [];
-    for (let i = 0; i < allUserIdsToFetch.length; i += 10) {
-      userChunks.push(allUserIdsToFetch.slice(i, i + 10));
+    for (let i = 0; i < allUserIdsToFetch.length; i += 30) {
+      userChunks.push(allUserIdsToFetch.slice(i, i + 30));
     }
 
     const allUsers: User[] = [];
@@ -72,13 +72,9 @@ export const createCalendarEventFlow = ai.defineFlow(
     }
 
     const attendeeEmails = allUsers
-      .filter(u => u.email)
+      .filter(u => u.email && u.id !== organizerId) // Exclude organizer from attendee list
       .map(u => ({ email: u.email }));
 
-    if (attendeeEmails.length === 0) {
-        console.log('No valid attendee emails found. Skipping event creation.');
-        return;
-    }
     console.log(`Found ${attendeeEmails.length} attendees with emails.`);
     
     const timeZone = 'Asia/Karachi';
@@ -104,15 +100,21 @@ export const createCalendarEventFlow = ai.defineFlow(
     }
 
     const meetingDate = new Date(date);
-    const ymd = formatInTimeZone(meetingDate, 'yyyy-MM-dd', timeZone);
+    console.log(`Input date timestamp: ${date}`);
+    console.log(`Meeting date object: ${meetingDate}`);
+    console.log(`Meeting date ISO: ${meetingDate.toISOString()}`);
+    
+    const ymd = formatInTimeZone(meetingDate, timeZone, 'yyyy-MM-dd');
+    console.log(`Formatted ymd: ${ymd}`);
+    console.log(`Start time str: ${startTimeStr}`);
+    console.log(`Full datetime string for parsing: ${ymd} ${startTimeStr}:00`);
 
-    console.log(`Date string: ${ymd}T${startTimeStr}:00`);
 
-    const startUtc = fromZonedTime(`${ymd}T${startTimeStr}:00`, timeZone);
+    const startUtc = fromZonedTime(`${ymd} ${startTimeStr}:00`, timeZone);
 
     let endUtc;
     if (endTimeStr) {
-        endUtc = fromZonedTime(`${ymd}T${endTimeStr}:00`, timeZone);
+        endUtc = fromZonedTime(`${ymd} ${endTimeStr}:00`, timeZone);
     } else {
         endUtc = addMinutes(startUtc, 50);
     }
@@ -126,6 +128,7 @@ export const createCalendarEventFlow = ai.defineFlow(
       start: { dateTime: startUtc.toISOString(), timeZone },
       end:   { dateTime: endUtc.toISOString(),   timeZone },
       attendees: attendeeEmails,
+      organizer: { email: organizer.email },
       reminders: {
         useDefault: false,
         overrides: [
