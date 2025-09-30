@@ -17,25 +17,25 @@ const CreateCalendarEventInputSchema = z.object({
   meetingId: z.string(),
   title: z.string(),
   date: z.number(), // timestamp
-  time: z.string(), // e.g., "9:00 AM - 9:30 AM"
+  time: z.string(), // e.g., "9:00 - 9:30"
   attendeeIds: z.array(z.string()),
 });
 export type CreateCalendarEventInput = z.infer<typeof CreateCalendarEventInputSchema>;
 
 const timeTo24Hour = (time: string): { hours: number; minutes: number } => {
-  const match = time.match(/(\d+):(\d+)\s*(AM|PM)/i);
-  if (!match) {
-    throw new Error(`Invalid time format provided to timeTo24Hour: "${time}". Expected format like "9:00 AM".`);
+  // Handles formats like "9:00" or "11:40"
+  const [hourStr, minuteStr] = time.split(':');
+  if (!hourStr || !minuteStr) {
+      throw new Error(`Invalid time format provided to timeTo24Hour: "${time}". Expected format like "9:00" or "11:40".`);
   }
-  const [hourStr, minuteStr, ampm] = match.slice(1);
-  let hours = parseInt(hourStr, 10);
-  if (ampm.toUpperCase() === 'PM' && hours < 12) {
-    hours += 12;
+  const hours = parseInt(hourStr, 10);
+  const minutes = parseInt(minuteStr, 10);
+
+  if (isNaN(hours) || isNaN(minutes)) {
+       throw new Error(`Invalid time format provided to timeTo24Hour: "${time}". Could not parse hours or minutes.`);
   }
-  if (ampm.toUpperCase() === 'AM' && hours === 12) {
-    hours = 0;
-  }
-  return { hours, minutes: parseInt(minuteStr, 10) };
+
+  return { hours, minutes };
 };
 
 
