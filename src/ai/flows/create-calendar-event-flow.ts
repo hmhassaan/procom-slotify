@@ -12,7 +12,7 @@ import { google } from 'googleapis';
 import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
-import {toZonedTime} from 'date-fns-tz';
+import { toZonedTime, format } from 'date-fns-tz';
 
 const CreateCalendarEventInputSchema = z.object({
   meetingId: z.string(),
@@ -84,35 +84,33 @@ export const createCalendarEventFlow = ai.defineFlow(
     const meetingDate = new Date(date);
     const start = parseTime(startTimeStr);
     
-    // Create zoned date objects to ensure time is interpreted correctly in PKT
-    const zonedMeetingDate = toZonedTime(meetingDate, timeZone);
-    
-    const eventStartTime = new Date(zonedMeetingDate);
-    eventStartTime.setHours(start.hours, start.minutes, 0, 0);
+    // Create a zoned date object to ensure time is interpreted correctly in PKT
+    let zonedStartTime = toZonedTime(meetingDate, timeZone);
+    zonedStartTime.setHours(start.hours, start.minutes, 0, 0);
 
-    let eventEndTime;
+    let zonedEndTime;
     if (endTimeStr) {
         const end = parseTime(endTimeStr);
-        eventEndTime = new Date(zonedMeetingDate);
-        eventEndTime.setHours(end.hours, end.minutes, 0, 0);
+        zonedEndTime = toZonedTime(meetingDate, timeZone);
+        zonedEndTime.setHours(end.hours, end.minutes, 0, 0);
         // Handle overnight meetings if necessary, though unlikely for this app
-        if (eventEndTime <= eventStartTime) {
-            eventEndTime.setDate(eventEndTime.getDate() + 1);
+        if (zonedEndTime <= zonedStartTime) {
+            zonedEndTime.setDate(zonedEndTime.getDate() + 1);
         }
     } else {
         // Fallback: assume 50 minute duration if no end time
-        eventEndTime = new Date(eventStartTime.getTime() + 50 * 60 * 1000);
+        zonedEndTime = new Date(zonedStartTime.getTime() + 50 * 60 * 1000);
     }
     
 
     const event = {
       summary: title,
       start: {
-        dateTime: eventStartTime.toISOString(),
+        dateTime: zonedStartTime.toISOString(),
         timeZone: timeZone,
       },
       end: {
-        dateTime: eventEndTime.toISOString(),
+        dateTime: zonedEndTime.toISOString(),
         timeZone: timeZone,
       },
       attendees: usersWithTokens.map(u => ({ email: u.email })),
