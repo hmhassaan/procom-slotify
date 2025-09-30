@@ -103,7 +103,8 @@ export const createCalendarEventFlow = ai.defineFlow(
       throw new Error(`Invalid start time format: "${startTimeStrRaw}"`);
     }
 
-    const ymd = formatInTimeZone(date, timeZone, 'yyyy-MM-dd');
+    const meetingDate = new Date(date);
+    const ymd = formatInTimeZone(meetingDate, timeZone, 'yyyy-MM-dd');
 
     console.log(`Date string: ${ymd}T${startTimeStr}:00`);
 
