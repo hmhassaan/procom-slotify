@@ -6,6 +6,9 @@ export const runtime = 'nodejs';
 
 // This is the redirect URI for Google OAuth
 export async function GET(req: NextRequest) {
+  // Debugging log to check if environment variables are loaded on Vercel
+  console.log('id', process.env.GOOGLE_CLIENT_ID?.slice(0,6), 'hasSecret', !!process.env.GOOGLE_CLIENT_SECRET, 'redir', process.env.GOOGLE_REDIRECT_URI);
+
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
