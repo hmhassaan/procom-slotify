@@ -73,7 +73,11 @@ export const createCalendarEventFlow = ai.defineFlow(
     const meetingDatePk = new Date(date);
     const ymd = tzFormat(meetingDatePk, 'yyyy-MM-dd', { timeZone });
 
-    const startDateTimeString = `${ymd}T${startTimeStr}:00`;
+    // Helper to zero-pad time components
+    const formatTimePart = (part: string) => part.padStart(2, '0');
+
+    const [startHour, startMinute] = startTimeStr.split(':').map(formatTimePart);
+    const startDateTimeString = `${ymd}T${startHour}:${startMinute}:00`;
     const localStartDateTime = toZonedTime(startDateTimeString, timeZone);
 
     if (isNaN(localStartDateTime.getTime())) {
@@ -82,7 +86,8 @@ export const createCalendarEventFlow = ai.defineFlow(
 
     let localEndDateTime;
     if (endTimeStr) {
-      const endDateTimeString = `${ymd}T${endTimeStr}:00`;
+      const [endHour, endMinute] = endTimeStr.split(':').map(formatTimePart);
+      const endDateTimeString = `${ymd}T${endHour}:${endMinute}:00`;
       localEndDateTime = toZonedTime(endDateTimeString, timeZone);
       if (isNaN(localEndDateTime.getTime())) {
         throw new Error(`Failed to create a valid end date from string: "${endDateTimeString}"`);
