@@ -73,17 +73,17 @@ export const createCalendarEventFlow = ai.defineFlow(
     const meetingDatePk = new Date(date); // timestamp (ms)
     const ymd = tzFormat(meetingDatePk, 'yyyy-MM-dd', { timeZone });
 
-    const localStartDateTime = new Date(`${ymd}T${startTimeStr}:00`);
+    const localStartDateTime = toZonedTime(new Date(`${ymd}T${startTimeStr}:00`), timeZone);
     
     let localEndDateTime;
     if (endTimeStr) {
-        localEndDateTime = new Date(`${ymd}T${endTimeStr}:00`);
+        localEndDateTime = toZonedTime(new Date(`${ymd}T${endTimeStr}:00`), timeZone);
     } else {
         localEndDateTime = addMinutes(localStartDateTime, 50);
     }
     
-    const startUtc = toZonedTime(localStartDateTime, timeZone);
-    const endUtc = toZonedTime(localEndDateTime, timeZone);
+    const startUtc = localStartDateTime;
+    const endUtc = localEndDateTime;
 
     const event = {
       summary: title,

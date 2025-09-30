@@ -222,7 +222,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers }: { day: string, time
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Schedule a Meeting</DialogTitle>
-          <DialogDescription>On {time}</DialogDescription>
+          <DialogDescription>On {day} at {time}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>

@@ -22,7 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
-import { format, isPast } from "date-fns";
+import { format, isPast, addMinutes } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -244,31 +244,25 @@ const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: M
     }
   };
   
-    const meetingEndTime = useMemo(() => {
-    if (!meeting.date || !meeting.time) return new Date();
-    
-    // Time format is like "08:00-8:50" or "12:35-1:25"
-    const [startTimeStr, endTimeStr] = meeting.time.split(/[-–]/); // Handle both hyphen and en-dash
-    if (!endTimeStr) {
-      // Fallback for older formats, assume 50 min duration
-      return new Date(new Date(meeting.date).getTime() + 50 * 60 * 1000);
-    }
-    
-    const [endHours, endMinutes] = endTimeStr.split(':').map(Number);
-    
-    const endDate = new Date(meeting.date);
-    endDate.setHours(endHours, endMinutes, 0, 0);
-    
-    // Handle cases where end time is on the next day (e.g. 12:35-1:25)
-    const [startHours] = startTimeStr.split(':').map(Number);
-    if (endHours < startHours) {
-        endDate.setDate(endDate.getDate() + 1);
-    }
+    const { meetingEndTime, meetingIsPast } = useMemo(() => {
+    if (!meeting.date || !meeting.time) return { meetingEndTime: new Date(), meetingIsPast: true };
 
-    return endDate;
+    const meetingDate = new Date(meeting.date);
+    const [startTimeStr, endTimeStrRaw] = meeting.time.split(/[-–]/);
+    const endTimeStr = endTimeStrRaw?.trim();
+
+    let endDate;
+    if (endTimeStr) {
+      const [endHours, endMinutes] = endTimeStr.split(':').map(Number);
+      endDate = new Date(meetingDate.getFullYear(), meetingDate.getMonth(), meetingDate.getDate(), endHours, endMinutes);
+    } else {
+      const [startHours, startMinutes] = startTimeStr.split(':').map(Number);
+      const startDate = new Date(meetingDate.getFullYear(), meetingDate.getMonth(), meetingDate.getDate(), startHours, startMinutes);
+      endDate = addMinutes(startDate, 50);
+    }
+    
+    return { meetingEndTime: endDate, meetingIsPast: isPast(endDate) };
   }, [meeting.date, meeting.time]);
-  
-  const meetingIsPast = isPast(meetingEndTime);
 
 
   return (
@@ -462,7 +456,3 @@ export default function MeetingsPage() {
     </div>
   );
 }
-
-    
-
-    
