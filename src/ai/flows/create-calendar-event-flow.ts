@@ -12,7 +12,7 @@ import { google } from 'googleapis';
 import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
-import { fromZonedTime, format as tzFormat } from 'date-fns-tz';
+import { fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { addMinutes } from 'date-fns';
 
 
@@ -79,8 +79,7 @@ export const createCalendarEventFlow = ai.defineFlow(
 
     const formattedStartTime = formatTime(startTimeStr);
 
-    const meetingDate = new Date(date); // timestamp (ms)
-    const ymd = tzFormat(meetingDate, 'yyyy-MM-dd', { timeZone });
+    const ymd = formatInTimeZone(date, timeZone, 'yyyy-MM-dd');
 
     console.log(`Date string: ${ymd}T${formattedStartTime}:00`);
 
