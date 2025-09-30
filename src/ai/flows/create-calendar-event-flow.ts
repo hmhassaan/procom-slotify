@@ -40,7 +40,6 @@ export const createCalendarEventFlow = ai.defineFlow(
       return;
     }
     
-    // The organizer is the one who creates the event.
     const organizerDoc = await getDoc(doc(db, 'users', organizerId));
     if (!organizerDoc.exists() || !organizerDoc.data().googleRefreshToken) {
       console.log(`Organizer ${organizerId} has not connected their Google Calendar. Skipping event creation.`);
@@ -49,7 +48,6 @@ export const createCalendarEventFlow = ai.defineFlow(
     const organizer = organizerDoc.data() as User;
     console.log(`Organizer found: ${organizer.email}`);
     
-    // Fetch all other attendees to invite them.
     const allUserIdsToFetch = [...new Set([organizerId, ...attendeeIds])];
     if (allUserIdsToFetch.length === 0) {
         console.log('No attendees to invite. Skipping calendar event creation.');
@@ -79,7 +77,6 @@ export const createCalendarEventFlow = ai.defineFlow(
     const startTimeStr = startTimeStrRaw.trim();
     const endTimeStr = endTimeStrRaw?.trim();
 
-    // Ensure time format is HH:MM (pad with zeros if needed)
     const formatTime = (timeStr: string) => {
       const parts = timeStr.split(':');
       if (parts.length !== 2) return null;
@@ -93,12 +90,11 @@ export const createCalendarEventFlow = ai.defineFlow(
       throw new Error(`Invalid start time format: "${startTimeStr}"`);
     }
 
-    const ymd = formatInTimeZone(date, timeZone, 'yyyy-MM-dd');
+    const ymd = formatInTimeZone(date, 'yyyy-MM-dd', { timeZone });
 
     console.log(`Date string: ${ymd}T${formattedStartTime}:00`);
 
-    // Build local PKT wall times, then convert to UTC instants
-    const startUtc = fromZonedTime(`${ymd} ${formattedStartTime}:00`, timeZone);
+    const startUtc = fromZonedTime(`${ymd}T${formattedStartTime}:00`, timeZone);
 
     let endUtc;
     if (endTimeStr) {
@@ -106,7 +102,7 @@ export const createCalendarEventFlow = ai.defineFlow(
         if (!formattedEndTime) {
             throw new Error(`Invalid end time format: "${endTimeStr}"`);
         }
-        endUtc = fromZonedTime(`${ymd} ${formattedEndTime}:00`, timeZone);
+        endUtc = fromZonedTime(`${ymd}T${formattedEndTime}:00`, timeZone);
     } else {
         endUtc = addMinutes(startUtc, 50);
     }
@@ -160,7 +156,6 @@ export const createCalendarEventFlow = ai.defineFlow(
 
     } catch (error: any) {
         console.error(`Failed to create calendar event:`, error.message);
-        // We might want to re-throw here to let the caller know something went wrong
         throw new Error(`Failed to create Google Calendar event: ${error.message}`);
     }
 
