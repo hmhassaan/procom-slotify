@@ -12,7 +12,7 @@ import { google } from 'googleapis';
 import { collection, getDocs, query, where, doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { User } from '@/app/types';
-import { zonedTimeToUtc, format as tzFormat } from 'date-fns-tz';
+import { fromZonedTime, format as tzFormat } from 'date-fns-tz';
 import { addMinutes } from 'date-fns';
 
 
@@ -44,6 +44,7 @@ export const createCalendarEventFlow = ai.defineFlow(
         return;
     }
 
+    console.log(`Querying for ${attendeeIds.length} users...`);
     const usersQuery = query(collection(db, 'users'), where('__name__', 'in', attendeeIds));
     const usersSnapshot = await getDocs(usersQuery);
     const usersWithTokens: { user: User, email: string }[] = [];
@@ -74,13 +75,17 @@ export const createCalendarEventFlow = ai.defineFlow(
     const ymd = tzFormat(meetingDate, 'yyyy-MM-dd', { timeZone });
 
     // Build local PKT wall times, then convert to UTC instants
-    const startUtc = zonedTimeToUtc(`${ymd}T${startTimeStr}:00`, timeZone);
+    const startUtc = fromZonedTime(`${ymd}T${startTimeStr}:00`, timeZone);
     
     let endUtc;
     if (endTimeStr) {
-        endUtc = zonedTimeToUtc(`${ymd}T${endTimeStr}:00`, timeZone);
+        endUtc = fromZonedTime(`${ymd}T${endTimeStr}:00`, timeZone);
     } else {
         endUtc = addMinutes(startUtc, 50);
+    }
+
+    if (isNaN(startUtc.getTime()) || isNaN(endUtc.getTime())) {
+        throw new Error(`Failed to create valid date objects. Start: ${startUtc}, End: ${endUtc}`);
     }
 
     const event = {
