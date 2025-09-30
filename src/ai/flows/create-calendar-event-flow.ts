@@ -64,22 +64,31 @@ export const createCalendarEventFlow = ai.defineFlow(
     console.log(`Found ${usersWithTokens.length} users with Google Calendar tokens.`);
     
     const timeZone = 'Asia/Karachi';
-    const [startTimeStrRaw, endTimeStrRaw] = time.split(/[-–]/);
-    if (!startTimeStrRaw) throw new Error(`Invalid time range format: "${time}"`);
+    const [startTimeStr, endTimeStr] = time.split(/[-–]/).map(s => s.trim());
 
-    const startTimeStr = startTimeStrRaw.trim();
-    const endTimeStr = endTimeStrRaw?.trim();
+    if (!startTimeStr) {
+      throw new Error(`Invalid time range format: "${time}". Could not parse start time.`);
+    }
 
-    const meetingDatePk = new Date(date); // timestamp (ms)
+    const meetingDatePk = new Date(date);
     const ymd = tzFormat(meetingDatePk, 'yyyy-MM-dd', { timeZone });
 
-    const localStartDateTime = toZonedTime(new Date(`${ymd}T${startTimeStr}:00`), timeZone);
-    
+    const startDateTimeString = `${ymd}T${startTimeStr}:00`;
+    const localStartDateTime = toZonedTime(startDateTimeString, timeZone);
+
+    if (isNaN(localStartDateTime.getTime())) {
+      throw new Error(`Failed to create a valid start date from string: "${startDateTimeString}"`);
+    }
+
     let localEndDateTime;
     if (endTimeStr) {
-        localEndDateTime = toZonedTime(new Date(`${ymd}T${endTimeStr}:00`), timeZone);
+      const endDateTimeString = `${ymd}T${endTimeStr}:00`;
+      localEndDateTime = toZonedTime(endDateTimeString, timeZone);
+      if (isNaN(localEndDateTime.getTime())) {
+        throw new Error(`Failed to create a valid end date from string: "${endDateTimeString}"`);
+      }
     } else {
-        localEndDateTime = addMinutes(localStartDateTime, 50);
+      localEndDateTime = addMinutes(localStartDateTime, 50);
     }
     
     const startUtc = localStartDateTime;
