@@ -135,25 +135,25 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         // Determine AM/PM and convert to 12-hour format for display
         let amPm = "AM";
         let displayHour = hour;
-
-        if (hour === 0) {
-          displayHour = 12; // 00:xx becomes 12:xx AM
-          amPm = "AM";
-        } else if (hour === 12) {
-          displayHour = 12; // 12:xx stays 12:xx PM
-          amPm = "PM";
-        } else if (hour > 12) {
-          displayHour = hour - 12; // 13:xx becomes 1:xx PM
-          amPm = "PM";
-        } else {
-          // 1-11 stays as is, AM
-          displayHour = hour;
-          amPm = "AM";
+        
+        // University Time Slot Logic: 8-11 are AM, others are PM.
+        // 12 PM is noon. 1-7 PM are afternoon/evening.
+        if (hour < 8 || hour === 12) { // 12, 1, 2, 3, 4, 5, 6, 7 are PM
+            amPm = "PM";
+            if (hour < 8 && hour !== 0) displayHour = hour; // 1-7 become 1-7
+            else if (hour === 0) displayHour = 12; // 00:xx becomes 12am
+            else displayHour = 12; // 12 stays 12
+        } else { // 8, 9, 10, 11 are AM
+            amPm = "AM";
+            displayHour = hour;
         }
 
+        // Adjust display hour for 12-hour format
+        if (displayHour > 12) displayHour -= 12;
+        if (displayHour === 0) displayHour = 12;
+        
         setTimeAmPm(amPm);
-        setTimeInput(`${String(displayHour).padStart(2, '0')}:${minute}`);
-
+        setTimeInput(`${String(displayHour)}:${minute}`);
 
         // Find the next occurrence of the selected day
         const today = new Date();
@@ -286,7 +286,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
                     <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
                 </PopoverContent>
             </Popover>
-            <Input type="time" value={timeInput} onChange={(e) => setTimeInput(e.target.value)} className="w-[120px]" />
+            <Input type="text" value={timeInput} onChange={(e) => setTimeInput(e.target.value)} className="w-[120px]" />
             <Select value={timeAmPm} onValueChange={setTimeAmPm}>
               <SelectTrigger className="w-[80px]"><SelectValue/></SelectTrigger>
               <SelectContent>

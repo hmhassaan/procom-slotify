@@ -36,7 +36,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
     const [isCreating, setIsCreating] = useState(false);
     const [meetingTitle, setMeetingTitle] = useState("");
     const [selectedDate, setSelectedDate] = useState<Date | undefined>();
-    const [timeInput, setTimeInput] = useState("9:00");
+    const [timeInput, setTimeInput] = useState("09:00");
     const [timeAmPm, setTimeAmPm] = useState("AM");
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   
@@ -45,7 +45,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
             setMeetingTitle("");
             setSelectedUserIds([]);
             setSelectedDate(new Date());
-            setTimeInput("9:00");
+            setTimeInput("09:00");
             setTimeAmPm("AM");
             setIsCreating(false);
         }
@@ -148,7 +148,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
                                 <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
                             </PopoverContent>
                         </Popover>
-                        <Input type="time" value={timeInput} onChange={(e) => setTimeInput(e.target.value)} className="w-[120px]"/>
+                        <Input type="text" value={timeInput} onChange={(e) => setTimeInput(e.target.value)} className="w-[120px]"/>
                         <Select value={timeAmPm} onValueChange={setTimeAmPm}>
                             <SelectTrigger className="w-[80px]"><SelectValue/></SelectTrigger>
                             <SelectContent>
