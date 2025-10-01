@@ -20,7 +20,7 @@ const CreateCalendarEventInputSchema = z.object({
   meetingId: z.string(),
   title: z.string(),
   date: z.number(), // timestamp
-  time: z.string(), // e.g., "9:00-9:50"
+  time: z.string(), // e.g., "9:00 AM" or "1:30 PM"
   organizerId: z.string(),
   attendeeIds: z.array(z.string()),
 });
@@ -78,35 +78,32 @@ export const createCalendarEventFlow = ai.defineFlow(
     console.log(`Found ${attendeeEmails.length} attendees with emails.`);
     
     const timeZone = 'Asia/Karachi';
-    const [startTimeStrRaw, endTimeStrRaw] = time.split(/[-–]/);
-    if (!startTimeStrRaw) {
-      throw new Error(`Invalid time range format: "${time}"`);
-    }
 
-    const formatTime = (timeStr: string | undefined) => {
-        if (!timeStr) return null;
-        const parts = timeStr.trim().split(':');
-        if (parts.length !== 2) return null;
-        
-        let hour = parseInt(parts[0], 10);
-        const minute = parseInt(parts[1], 10);
+    const formatTime = (time12h: string) => {
+        const [timePart, modifier] = time12h.split(' ');
+        if (!timePart || !modifier) return null;
 
-        // Convert to 24-hour format. Assuming 1-7 are PM, 8-12 are AM.
-        if (hour >= 1 && hour <= 7) {
-            hour += 12;
+        let [hours, minutes] = timePart.split(':').map(Number);
+        if (isNaN(hours) || isNaN(minutes)) return null;
+
+        if (hours === 12) {
+            hours = modifier.toUpperCase() === 'AM' ? 0 : 12;
+        } else {
+            if (modifier.toUpperCase() === 'PM') {
+                hours += 12;
+            }
         }
-
-        const hourStr = hour.toString().padStart(2, '0');
-        const minuteStr = minute.toString().padStart(2, '0');
+        
+        const hourStr = hours.toString().padStart(2, '0');
+        const minuteStr = minutes.toString().padStart(2, '0');
         
         return `${hourStr}:${minuteStr}`;
     };
 
-    const startTimeStr = formatTime(startTimeStrRaw);
-    const endTimeStr = formatTime(endTimeStrRaw);
-
+    const startTimeStr = formatTime(time);
+    
     if (!startTimeStr) {
-      throw new Error(`Invalid start time format: "${startTimeStrRaw}"`);
+      throw new Error(`Invalid time format: "${time}"`);
     }
 
     const meetingDate = new Date(date);
@@ -121,13 +118,7 @@ export const createCalendarEventFlow = ai.defineFlow(
 
 
     const startUtc = fromZonedTime(`${ymd} ${startTimeStr}:00`, timeZone);
-
-    let endUtc;
-    if (endTimeStr) {
-        endUtc = fromZonedTime(`${ymd} ${endTimeStr}:00`, timeZone);
-    } else {
-        endUtc = addMinutes(startUtc, 50);
-    }
+    const endUtc = addMinutes(startUtc, 50);
 
     if (isNaN(startUtc.getTime()) || isNaN(endUtc.getTime())) {
         throw new Error(`Failed to create valid date objects. Start: ${startUtc}, End: ${endUtc}`);

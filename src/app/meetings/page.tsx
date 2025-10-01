@@ -30,21 +30,23 @@ import { cn } from "@/lib/utils";
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
 const ScheduleMeetingFromMeetingsPage = () => {
-    const { users, currentUserProfile, createMeeting, canViewUser, teams, subTeams, positions, timeSlots } = useAppContext();
+    const { users, currentUserProfile, createMeeting, canViewUser, teams, subTeams, positions } = useAppContext();
     const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [meetingTitle, setMeetingTitle] = useState("");
     const [selectedDate, setSelectedDate] = useState<Date | undefined>();
-    const [selectedTime, setSelectedTime] = useState("");
+    const [timeInput, setTimeInput] = useState("9:00");
+    const [timeAmPm, setTimeAmPm] = useState("AM");
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   
     useEffect(() => {
         if (isOpen) {
             setMeetingTitle("");
             setSelectedUserIds([]);
-            setSelectedDate(undefined);
-            setSelectedTime("");
+            setSelectedDate(new Date());
+            setTimeInput("9:00");
+            setTimeAmPm("AM");
             setIsCreating(false);
         }
     }, [isOpen]);
@@ -53,13 +55,14 @@ const ScheduleMeetingFromMeetingsPage = () => {
         if (isCreating) return;
         if (!meetingTitle.trim()) { toast({ variant: "destructive", title: "Title is required" }); return; }
         if (!selectedDate) { toast({ variant: "destructive", title: "Date is required" }); return; }
-        if (!selectedTime) { toast({ variant: "destructive", title: "Time is required" }); return; }
+        if (!timeInput.trim()) { toast({ variant: "destructive", title: "Time is required" }); return; }
         if (selectedUserIds.length === 0) { toast({ variant: "destructive", title: "Select at least one member" }); return; }
         if (!currentUserProfile) return;
   
         setIsCreating(true);
         try {
-            await createMeeting({ title: meetingTitle, date: selectedDate.getTime(), time: selectedTime, attendeeIds: selectedUserIds });
+            const finalTime = `${timeInput} ${timeAmPm}`;
+            await createMeeting({ title: meetingTitle, date: selectedDate.getTime(), time: finalTime, attendeeIds: selectedUserIds });
             toast({ title: "Meeting Scheduled", description: "Invitations have been sent." });
             setIsOpen(false);
         } catch (e) {
@@ -133,7 +136,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
                 </DialogHeader>
                 <div className="space-y-4">
                     <Input id="meeting-title" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} placeholder="Meeting Title" />
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-center">
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant={"outline"} className={cn("justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}>
@@ -145,10 +148,12 @@ const ScheduleMeetingFromMeetingsPage = () => {
                                 <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
                             </PopoverContent>
                         </Popover>
-                        <Select value={selectedTime} onValueChange={setSelectedTime}>
-                            <SelectTrigger><SelectValue placeholder="Select Time"/></SelectTrigger>
+                        <Input type="time" value={timeInput} onChange={(e) => setTimeInput(e.target.value)} className="w-[120px]"/>
+                        <Select value={timeAmPm} onValueChange={setTimeAmPm}>
+                            <SelectTrigger className="w-[80px]"><SelectValue/></SelectTrigger>
                             <SelectContent>
-                                {timeSlots.map(time => <SelectItem key={time} value={time}>{time}</SelectItem>)}
+                                <SelectItem value="AM">AM</SelectItem>
+                                <SelectItem value="PM">PM</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -254,18 +259,15 @@ const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: M
     if (!meeting.date || !meeting.time) return { meetingEndTime: new Date(), meetingIsPast: true };
 
     const meetingDate = new Date(meeting.date);
-    const [startTimeStr, endTimeStrRaw] = meeting.time.split(/[-–]/);
-    const endTimeStr = endTimeStrRaw?.trim();
 
-    let endDate;
-    if (endTimeStr) {
-      const [endHours, endMinutes] = endTimeStr.split(':').map(Number);
-      endDate = new Date(meetingDate.getFullYear(), meetingDate.getMonth(), meetingDate.getDate(), endHours, endMinutes);
-    } else {
-      const [startHours, startMinutes] = startTimeStr.split(':').map(Number);
-      const startDate = new Date(meetingDate.getFullYear(), meetingDate.getMonth(), meetingDate.getDate(), startHours, startMinutes);
-      endDate = addMinutes(startDate, 50);
-    }
+    // This logic needs to parse "1:30 PM" correctly.
+    const [timePart, modifier] = meeting.time.split(' ');
+    let [hours, minutes] = timePart.split(':').map(Number);
+    if (modifier && modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
+    if (modifier && modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
+
+    const startDate = new Date(meetingDate.getFullYear(), meetingDate.getMonth(), meetingDate.getDate(), hours, minutes);
+    const endDate = addMinutes(startDate, 50);
     
     return { meetingEndTime: endDate, meetingIsPast: isPast(endDate) };
   }, [meeting.date, meeting.time]);
@@ -305,7 +307,7 @@ const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: M
               ))}
             </div>
           </div>
-          {!isOrganizer && currentUserStatus && currentUserStatus !== 'organizer' && (
+          {!isOrganizer && currentUserStatus && currentUserStatus !== 'organizer' && !meetingIsPast && (
             <div className="flex gap-2">
               <Button size="sm" variant={currentUserStatus === 'accepted' ? "default" : "outline"} onClick={() => onRespond(meeting.id, 'accepted')}><Check className="mr-2"/>Accept</Button>
               <Dialog open={isDeclineDialogOpen} onOpenChange={setIsDeclineDialogOpen}>
@@ -326,7 +328,7 @@ const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: M
               </Dialog>
             </div>
           )}
-          {isOrganizer && (
+          {isOrganizer && !meetingIsPast && (
             <AlertDialog>
                 <AlertDialogTrigger asChild>
                     <Button size="sm" variant="destructive" className="gap-2"><Trash2/>Cancel Meeting</Button>
@@ -375,7 +377,7 @@ export default function MeetingsPage() {
     const organized = meetings.filter(m => m.organizerId === currentUserProfile.id);
     const invited = meetings.filter(m => m.organizerId !== currentUserProfile.id && m.attendees.some(a => a.userId === currentUserProfile.id));
     const all = [...organized, ...invited].sort(sortFn);
-    const pending = invited.filter(m => m.attendees.find(a => a.userId === currentUserProfile.id)?.status === 'pending');
+    const pending = invited.filter(m => m.attendees.find(a => a.userId === currentUserProfile.id)?.status === 'pending' && !isPast(new Date(m.date)));
     
     return { 
         allMeetings: all, 

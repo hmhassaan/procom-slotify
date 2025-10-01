@@ -24,6 +24,8 @@ import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -111,6 +113,8 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
   const [meetingTitle, setMeetingTitle] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+  const [timeInput, setTimeInput] = useState("9:00");
+  const [timeAmPm, setTimeAmPm] = useState("AM");
   const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
@@ -120,7 +124,19 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
             .map(u => u.id);
         setSelectedUserIds(defaultSelectedIds);
         setMeetingTitle("");
-        setIsCreating(false);
+        
+        // Time parsing from slot
+        const [hour, minute] = time.split(/[-–]/)[0].split(':');
+        let parsedHour = parseInt(hour, 10);
+        
+        if (parsedHour >= 8 && parsedHour <= 12) {
+            setTimeAmPm("AM");
+        } else {
+            setTimeAmPm("PM");
+            if (parsedHour > 12) parsedHour -= 12;
+        }
+
+        setTimeInput(`${parsedHour}:${minute}`);
 
         // Find the next occurrence of the selected day
         const today = new Date();
@@ -132,7 +148,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         nextDate.setDate(today.getDate() + daysUntil);
         setSelectedDate(nextDate);
     }
-  }, [isOpen, filteredUsers, currentUserProfile, day]);
+  }, [isOpen, filteredUsers, currentUserProfile, day, time]);
 
   const handleCreateMeeting = async () => {
     if (isCreating) return;
@@ -145,6 +161,10 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
       toast({ variant: "destructive", title: "Date is required" });
       return;
     }
+    if (!timeInput.trim()) {
+      toast({ variant: "destructive", title: "Time is required" });
+      return;
+    }
     if (selectedUserIds.length === 0) {
       toast({ variant: "destructive", title: "Select at least one member" });
       return;
@@ -153,10 +173,11 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
 
     setIsCreating(true);
     try {
+      const finalTime = `${timeInput} ${timeAmPm}`;
       await createMeeting({
         title: meetingTitle,
         date: selectedDate.getTime(),
-        time,
+        time: finalTime,
         attendeeIds: selectedUserIds,
       });
       toast({ title: "Meeting Scheduled", description: "Invitations have been sent." });
@@ -235,9 +256,8 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
             <Label htmlFor="meeting-title">Meeting Title</Label>
             <Input id="meeting-title" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} />
           </div>
-           <div>
-            <Label htmlFor="meeting-date">Meeting Date</Label>
-             <Popover>
+           <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-center">
+            <Popover>
                 <PopoverTrigger asChild>
                     <Button id="meeting-date" variant={"outline"} className={cn("w-full justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}>
                         <CalendarIcon className="mr-2 h-4 w-4" />
@@ -248,6 +268,14 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
                     <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
                 </PopoverContent>
             </Popover>
+            <Input type="time" value={timeInput} onChange={(e) => setTimeInput(e.target.value)} className="w-[120px]" />
+            <Select value={timeAmPm} onValueChange={setTimeAmPm}>
+              <SelectTrigger className="w-[80px]"><SelectValue/></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="AM">AM</SelectItem>
+                <SelectItem value="PM">PM</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <div className="flex justify-between items-center mb-2">
