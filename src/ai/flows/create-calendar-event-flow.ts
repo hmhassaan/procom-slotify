@@ -56,7 +56,7 @@ export const createCalendarEventFlow = ai.defineFlow(
 
     console.log(`Querying for ${allUserIdsToFetch.length} users...`);
 
-    // Batch Firestore queries since 'in' operator has a limit of 10
+    // Batch Firestore queries since 'in' operator has a limit of 30 in a single query.
     const userChunks = [];
     for (let i = 0; i < allUserIdsToFetch.length; i += 30) {
       userChunks.push(allUserIdsToFetch.slice(i, i + 30));
@@ -87,9 +87,19 @@ export const createCalendarEventFlow = ai.defineFlow(
         if (!timeStr) return null;
         const parts = timeStr.trim().split(':');
         if (parts.length !== 2) return null;
-        const hour = parts[0].padStart(2, '0');
-        const minute = parts[1].padStart(2, '0');
-        return `${hour}:${minute}`;
+        
+        let hour = parseInt(parts[0], 10);
+        const minute = parseInt(parts[1], 10);
+
+        // Convert to 24-hour format. Assuming 1-7 are PM, 8-12 are AM.
+        if (hour >= 1 && hour <= 7) {
+            hour += 12;
+        }
+
+        const hourStr = hour.toString().padStart(2, '0');
+        const minuteStr = minute.toString().padStart(2, '0');
+        
+        return `${hourStr}:${minuteStr}`;
     };
 
     const startTimeStr = formatTime(startTimeStrRaw);
@@ -104,7 +114,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     console.log(`Meeting date object: ${meetingDate}`);
     console.log(`Meeting date ISO: ${meetingDate.toISOString()}`);
     
-    const ymd = formatInTimeZone(meetingDate, timeZone, 'yyyy-MM-dd');
+    const ymd = formatInTimeZone(meetingDate, 'yyyy-MM-dd', timeZone);
     console.log(`Formatted ymd: ${ymd}`);
     console.log(`Start time str: ${startTimeStr}`);
     console.log(`Full datetime string for parsing: ${ymd} ${startTimeStr}:00`);
