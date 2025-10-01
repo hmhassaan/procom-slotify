@@ -113,29 +113,46 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
   const [meetingTitle, setMeetingTitle] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
-  const [timeInput, setTimeInput] = useState("9:00");
+  const [timeInput, setTimeInput] = useState("09:00");
   const [timeAmPm, setTimeAmPm] = useState("AM");
   const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
+        setIsCreating(false);
         const defaultSelectedIds = filteredUsers
             .filter(u => u.id !== currentUserProfile?.id)
             .map(u => u.id);
         setSelectedUserIds(defaultSelectedIds);
         setMeetingTitle("");
-        
-        // Time parsing from slot
-        const [hourStr] = time.split(/[-–]/)[0].split(':');
-        const hour = parseInt(hourStr, 10);
-        
-        if ((hour >= 1 && hour < 8) || hour === 12) {
-          setTimeAmPm("PM");
+
+        // Time parsing from slot - extract start time
+        const startTimeStr = time.split(/[-–]/)[0].trim();
+        const [hourStr, minuteStr] = startTimeStr.split(':');
+        let hour = parseInt(hourStr, 10);
+        const minute = minuteStr || "00";
+
+        // Determine AM/PM and convert to 12-hour format for display
+        let amPm = "AM";
+        let displayHour = hour;
+
+        if (hour === 0) {
+          displayHour = 12; // 00:xx becomes 12:xx AM
+          amPm = "AM";
+        } else if (hour === 12) {
+          displayHour = 12; // 12:xx stays 12:xx PM
+          amPm = "PM";
+        } else if (hour > 12) {
+          displayHour = hour - 12; // 13:xx becomes 1:xx PM
+          amPm = "PM";
         } else {
-          setTimeAmPm("AM");
+          // 1-11 stays as is, AM
+          displayHour = hour;
+          amPm = "AM";
         }
-        
-        setTimeInput(time.split(/[-–]/)[0]);
+
+        setTimeAmPm(amPm);
+        setTimeInput(`${String(displayHour).padStart(2, '0')}:${minute}`);
 
 
         // Find the next occurrence of the selected day
@@ -173,8 +190,8 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
 
     setIsCreating(true);
     try {
-      // If the original time was a range, pass it. Otherwise, pass the AM/PM time.
-      const finalTime = time.includes("-") ? time : `${timeInput} ${timeAmPm}`;
+      // Construct the final time string from the user's input.
+      const finalTime = `${timeInput} ${timeAmPm}`;
       await createMeeting({
         title: meetingTitle,
         date: selectedDate.getTime(),
