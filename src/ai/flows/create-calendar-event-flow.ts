@@ -20,7 +20,7 @@ const CreateCalendarEventInputSchema = z.object({
   meetingId: z.string(),
   title: z.string(),
   date: z.number(), // timestamp
-  time: z.string(), // e.g., "9:00 AM" or "1:30 PM" or "09:50-10:40"
+  time: z.string(), // e.g., "9:00 AM", "1:30 PM", or "09:50-10:40"
   organizerId: z.string(),
   attendeeIds: z.array(z.string()),
 });
@@ -108,12 +108,19 @@ export const createCalendarEventFlow = ai.defineFlow(
             return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
         }
         
-        // Handle 24-hour format like "09:50" or "9:50"
+        // Handle 24-hour format like "09:50" or "9:50" based on slot conventions
         const parts = timeStr.split(':');
         if (parts.length === 2) {
-            const hours = parseInt(parts[0]);
+            let hours = parseInt(parts[0]);
             const minutes = parseInt(parts[1]);
             if (!isNaN(hours) && !isNaN(minutes) && hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
+                // University Time Slot Logic: 8-11 are AM, others are PM.
+                // 12 PM is noon. 1-7 PM are afternoon/evening.
+                if (hours < 8 || hours === 12) { // 12, 1, 2, 3, 4, 5, 6, 7 are PM
+                    if (hours !== 12) {
+                        hours += 12;
+                    }
+                }
                 return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
             }
         }
