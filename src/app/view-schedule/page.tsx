@@ -173,7 +173,8 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
 
     setIsCreating(true);
     try {
-      const finalTime = `${timeInput} ${timeAmPm}`;
+      // If the original time was a range, pass it. Otherwise, pass the AM/PM time.
+      const finalTime = time.includes("-") ? time : `${timeInput} ${timeAmPm}`;
       await createMeeting({
         title: meetingTitle,
         date: selectedDate.getTime(),
@@ -421,7 +422,11 @@ export default function ViewSchedulePage() {
             if (!m.date) return false;
             const meetingDate = new Date(m.date);
             const meetingDay = format(meetingDate, "eeee"); // "Monday", "Tuesday", etc.
-            return meetingDay === day && m.time === time && m.attendees.some(a => a.userId === user.id && a.status === 'accepted');
+            
+            // This is a simplified time check. For real-world use, this should be a robust range check.
+            const meetingTimeMatchesSlot = m.time.startsWith(time.split(/[-–]/)[0]);
+
+            return meetingDay === day && meetingTimeMatchesSlot && m.attendees.some(a => a.userId === user.id && a.status === 'accepted');
           });
 
           if (userMeetingsInSlot.length > 0) {
@@ -517,13 +522,14 @@ export default function ViewSchedulePage() {
       const meetingDate = new Date(meeting.date);
       const meetingDay = format(meetingDate, "eeee");
       if (meeting.attendees.some(a => a.userId === currentUserProfile.id && a.status === 'accepted')) {
-        const key = `${meetingDay}-${meeting.time}`;
+        const key = `${meetingDay}-${timeSlots.find(slot => meeting.time.startsWith(slot.split(/[-–]/)[0]))}`;
+        if (key.includes('undefined')) return;
         const existing = map.get(key) || [];
         map.set(key, [...existing, meeting]);
       }
     });
     return map;
-  }, [meetings, currentUserProfile]);
+  }, [meetings, currentUserProfile, timeSlots]);
 
   if (pageLoading) {
     return <div className="flex items-center justify-center min-h-screen"><p>Loading schedule...</p></div>;
@@ -631,7 +637,7 @@ export default function ViewSchedulePage() {
                             </div>
                             <div className="p-3 space-y-3 flex-grow">
                               {userMeetings.length > 0 && (
-                                <div className="border-l-4 border-blue-500 pl-2 text-sm">
+                                <div className="border-l-4 border-blue-500 pl-2 text-sm mb-3">
                                   <p className="font-bold text-blue-600">Your Meeting:</p>
                                   {userMeetings.map(m => <p key={m.id} className="text-muted-foreground">{m.title}</p>)}
                                 </div>

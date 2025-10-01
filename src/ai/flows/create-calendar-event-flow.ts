@@ -127,8 +127,11 @@ export const createCalendarEventFlow = ai.defineFlow(
         
         return null;
     };
-
-    const startTimeStr = parseTime(time);
+    
+    const [startTimeRaw, endTimeRaw] = time.split(/[-–]/);
+    
+    const startTimeStr = parseTime(startTimeRaw);
+    const endTimeStr = endTimeRaw ? parseTime(endTimeRaw) : null;
     
     if (!startTimeStr) {
       throw new Error(`Invalid time format: "${time}"`);
@@ -146,7 +149,14 @@ export const createCalendarEventFlow = ai.defineFlow(
 
 
     const startUtc = fromZonedTime(`${ymd} ${startTimeStr}:00`, timeZone);
-    const endUtc = addMinutes(startUtc, 50);
+    let endUtc;
+
+    if (endTimeStr) {
+        endUtc = fromZonedTime(`${ymd} ${endTimeStr}:00`, timeZone);
+    } else {
+        endUtc = addMinutes(startUtc, 50);
+    }
+
 
     if (isNaN(startUtc.getTime()) || isNaN(endUtc.getTime())) {
         throw new Error(`Failed to create valid date objects. Start: ${startUtc}, End: ${endUtc}`);
