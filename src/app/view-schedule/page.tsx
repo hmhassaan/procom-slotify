@@ -126,17 +126,17 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         setMeetingTitle("");
         
         // Time parsing from slot
-        const [hour, minute] = time.split(/[-–]/)[0].split(':');
-        let parsedHour = parseInt(hour, 10);
+        const [hourStr] = time.split(/[-–]/)[0].split(':');
+        const hour = parseInt(hourStr, 10);
         
-        if (parsedHour >= 8 && parsedHour <= 12) {
-            setTimeAmPm("AM");
+        if ((hour >= 1 && hour < 8) || hour === 12) {
+          setTimeAmPm("PM");
         } else {
-            setTimeAmPm("PM");
-            if (parsedHour > 12) parsedHour -= 12;
+          setTimeAmPm("AM");
         }
+        
+        setTimeInput(time.split(/[-–]/)[0]);
 
-        setTimeInput(`${parsedHour}:${minute}`);
 
         // Find the next occurrence of the selected day
         const today = new Date();
