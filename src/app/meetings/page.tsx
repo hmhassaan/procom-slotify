@@ -229,16 +229,17 @@ const ScheduleMeetingFromMeetingsPage = () => {
 };
 
 
-const MeetingCard = ({ meeting, isOrganizer, onRespond, onDelete }: { meeting: Meeting, isOrganizer: boolean, onRespond: (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => void, onDelete: (meetingId: string) => void }) => {
+const MeetingCard = ({ meeting, onRespond, onDelete }: { meeting: Meeting, onRespond: (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => void, onDelete: (meetingId: string) => void }) => {
   const { currentUserProfile } = useAppContext();
   const [isDeclineDialogOpen, setIsDeclineDialogOpen] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
   
-  if (!meeting.date) {
-    return null; // Don't render if meeting date is invalid
+  if (!meeting.date || !currentUserProfile) {
+    return null; // Don't render if meeting date is invalid or no user
   }
-  
-  const currentUserAttendee = meeting.attendees.find(a => a.userId === currentUserProfile?.id);
+
+  const isOrganizer = meeting.organizerId === currentUserProfile.id;
+  const currentUserAttendee = meeting.attendees.find(a => a.userId === currentUserProfile.id);
   const currentUserStatus = isOrganizer ? 'organizer' : currentUserAttendee?.status;
   
   const handleDeclineSubmit = () => {
@@ -369,7 +370,7 @@ export default function MeetingsPage() {
     
     const sortFn = (a: Meeting, b: Meeting) => {
         if (!a.date || !b.date) return 0;
-        const dateCompare = a.date - b.date;
+        const dateCompare = b.date - a.date;
         if (dateCompare !== 0) return dateCompare;
         return a.time.localeCompare(b.time);
     };
@@ -377,7 +378,7 @@ export default function MeetingsPage() {
     const organized = meetings.filter(m => m.organizerId === currentUserProfile.id);
     const invited = meetings.filter(m => m.organizerId !== currentUserProfile.id && m.attendees.some(a => a.userId === currentUserProfile.id));
     const all = [...organized, ...invited].sort(sortFn);
-    const pending = invited.filter(m => m.attendees.find(a => a.userId === currentUserProfile.id)?.status === 'pending' && !isPast(new Date(m.date)));
+    const pending = invited.filter(m => m.attendees.find(a => a.userId === currentUserProfile.id)?.status === 'pending' && m.date && !isPast(new Date(m.date)));
     
     return { 
         allMeetings: all, 
@@ -432,7 +433,7 @@ export default function MeetingsPage() {
         </TabsList>
         <TabsContent value="all" className="space-y-4 pt-4">
           {allMeetings.length > 0 ? (
-            allMeetings.map(m => <MeetingCard key={m.id} meeting={m} isOrganizer={m.organizerId === currentUserProfile?.id} onRespond={handleRespond} onDelete={handleDelete} />)
+            allMeetings.map(m => <MeetingCard key={m.id} meeting={m} onRespond={handleRespond} onDelete={handleDelete} />)
           ) : (
             <div className="text-center py-20 text-muted-foreground border rounded-lg">
                 <p className="text-lg font-medium">No meetings yet</p>
@@ -452,7 +453,7 @@ export default function MeetingsPage() {
         </TabsContent>
         <TabsContent value="organized" className="space-y-4 pt-4">
            {organizedMeetings.length > 0 ? (
-            organizedMeetings.map(m => <MeetingCard key={m.id} meeting={m} isOrganizer={true} onRespond={handleRespond} onDelete={handleDelete} />)
+            organizedMeetings.map(m => <MeetingCard key={m.id} meeting={m} onRespond={handleRespond} onDelete={handleDelete} />)
           ) : (
             <div className="text-center py-20 text-muted-foreground border rounded-lg">
                 <p className="text-lg font-medium">You haven't organized any meetings</p>

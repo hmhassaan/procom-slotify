@@ -132,28 +132,22 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         let hour = parseInt(hourStr, 10);
         const minute = minuteStr || "00";
 
-        // Determine AM/PM and convert to 12-hour format for display
+        // Determine AM/PM based on university convention
         let amPm = "AM";
-        let displayHour = hour;
-        
-        // University Time Slot Logic: 8-11 are AM, others are PM.
-        // 12 PM is noon. 1-7 PM are afternoon/evening.
-        if (hour < 8 || hour === 12) { // 12, 1, 2, 3, 4, 5, 6, 7 are PM
-            amPm = "PM";
-            if (hour < 8 && hour !== 0) displayHour = hour; // 1-7 become 1-7
-            else if (hour === 0) displayHour = 12; // 00:xx becomes 12am
-            else displayHour = 12; // 12 stays 12
-        } else { // 8, 9, 10, 11 are AM
-            amPm = "AM";
-            displayHour = hour;
+        if ((hour >= 1 && hour < 8) || hour === 12) {
+             amPm = "PM";
         }
-
-        // Adjust display hour for 12-hour format
-        if (displayHour > 12) displayHour -= 12;
-        if (displayHour === 0) displayHour = 12;
+        
+        // Convert to 12-hour format for display
+        let displayHour = hour;
+        if (hour === 0) {
+            displayHour = 12; // 00:xx -> 12 AM
+        } else if (hour > 12) {
+            displayHour = hour - 12; // 13:xx -> 1 PM
+        }
         
         setTimeAmPm(amPm);
-        setTimeInput(`${String(displayHour)}:${minute}`);
+        setTimeInput(`${String(displayHour).padStart(2, '0')}:${minute}`);
 
         // Find the next occurrence of the selected day
         const today = new Date();
@@ -440,8 +434,8 @@ export default function ViewSchedulePage() {
             const meetingDate = new Date(m.date);
             const meetingDay = format(meetingDate, "eeee"); // "Monday", "Tuesday", etc.
             
-            // This is a simplified time check. For real-world use, this should be a robust range check.
-            const meetingTimeMatchesSlot = m.time.startsWith(time.split(/[-–]/)[0]);
+            const slotStartTime = time.split(/[-–]/)[0];
+            const meetingTimeMatchesSlot = m.time.startsWith(slotStartTime);
 
             return meetingDay === day && meetingTimeMatchesSlot && m.attendees.some(a => a.userId === user.id && a.status === 'accepted');
           });
@@ -533,18 +527,33 @@ export default function ViewSchedulePage() {
   const userMeetingsBySlot = useMemo(() => {
     const map = new Map<string, Meeting[]>();
     if (!currentUserProfile) return map;
-
+  
     meetings.forEach(meeting => {
       if (!meeting.date) return;
+  
+      const isAccepted = meeting.attendees.some(a => a.userId === currentUserProfile.id && a.status === 'accepted');
+      if (!isAccepted) return;
+  
       const meetingDate = new Date(meeting.date);
-      const meetingDay = format(meetingDate, "eeee");
-      if (meeting.attendees.some(a => a.userId === currentUserProfile.id && a.status === 'accepted')) {
-        const key = `${meetingDay}-${timeSlots.find(slot => meeting.time.startsWith(slot.split(/[-–]/)[0]))}`;
-        if (key.includes('undefined')) return;
+      const meetingDay = format(meetingDate, "eeee"); // e.g., "Monday"
+  
+      // Find the corresponding time slot
+      const matchingSlot = timeSlots.find(slot => {
+        const slotStartTime = slot.split(/[-–]/)[0].trim();
+        const meetingStartTime = meeting.time.split(" ")[0]; // "1:30 PM" -> "1:30"
+  
+        // Very basic match. This could be improved for more accuracy.
+        // e.g., converting both to minutes from midnight
+        return slotStartTime.startsWith(meetingStartTime) || meeting.time.startsWith(slotStartTime);
+      });
+  
+      if (matchingSlot) {
+        const key = `${meetingDay}-${matchingSlot}`;
         const existing = map.get(key) || [];
         map.set(key, [...existing, meeting]);
       }
     });
+  
     return map;
   }, [meetings, currentUserProfile, timeSlots]);
 
