@@ -20,7 +20,7 @@ const CreateCalendarEventInputSchema = z.object({
   meetingId: z.string(),
   title: z.string(),
   date: z.number(), // timestamp
-  time: z.string(), // e.g., "9:00 AM" or "1:30 PM"
+  time: z.string(), // e.g., "9:00 AM" or "1:30 PM" or "09:50-10:40"
   organizerId: z.string(),
   attendeeIds: z.array(z.string()),
 });
@@ -79,28 +79,49 @@ export const createCalendarEventFlow = ai.defineFlow(
     
     const timeZone = 'Asia/Karachi';
 
-    const formatTime = (time12h: string) => {
-        const [timePart, modifier] = time12h.split(' ');
-        if (!timePart || !modifier) return null;
+    const parseTime = (timeStr: string) => {
+        timeStr = timeStr.trim();
+        
+        // Handle range format like "9:00-10:00" or "9:00 AM-10:00 AM"
+        // Just take the start time
+        const rangeSplit = timeStr.split(/[-–]/);
+        if (rangeSplit.length > 1) {
+            timeStr = rangeSplit[0].trim();
+        }
+        
+        // Check if it's 12-hour format (has AM/PM)
+        if (timeStr.includes('AM') || timeStr.includes('PM') || timeStr.includes('am') || timeStr.includes('pm')) {
+            const [timePart, modifier] = timeStr.split(/\s+/);
+            if (!timePart || !modifier) return null;
 
-        let [hours, minutes] = timePart.split(':').map(Number);
-        if (isNaN(hours) || isNaN(minutes)) return null;
+            let [hours, minutes] = timePart.split(':').map(Number);
+            if (isNaN(hours) || isNaN(minutes)) return null;
 
-        if (hours === 12) {
-            hours = modifier.toUpperCase() === 'AM' ? 0 : 12;
-        } else {
-            if (modifier.toUpperCase() === 'PM') {
-                hours += 12;
+            if (hours === 12) {
+                hours = modifier.toUpperCase() === 'AM' ? 0 : 12;
+            } else {
+                if (modifier.toUpperCase() === 'PM') {
+                    hours += 12;
+                }
+            }
+            
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        }
+        
+        // Handle 24-hour format like "09:50" or "9:50"
+        const parts = timeStr.split(':');
+        if (parts.length === 2) {
+            const hours = parseInt(parts[0]);
+            const minutes = parseInt(parts[1]);
+            if (!isNaN(hours) && !isNaN(minutes) && hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
+                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
             }
         }
         
-        const hourStr = hours.toString().padStart(2, '0');
-        const minuteStr = minutes.toString().padStart(2, '0');
-        
-        return `${hourStr}:${minuteStr}`;
+        return null;
     };
 
-    const startTimeStr = formatTime(time);
+    const startTimeStr = parseTime(time);
     
     if (!startTimeStr) {
       throw new Error(`Invalid time format: "${time}"`);
