@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, X, Calendar as CalendarIcon, User, Users, Trash2, CalendarPlus } from "lucide-react";
+import { Check, X, Calendar as CalendarIcon, User, Users, Trash2, CalendarPlus, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Meeting, MeetingAttendeeStatus, User as AppUser, Position } from "@/app/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -26,6 +26,7 @@ import { format, isPast, addMinutes } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -262,7 +263,7 @@ const MeetingCard = ({ meeting, onRespond, onDelete }: { meeting: Meeting, onRes
     }
   };
   
-    const { meetingEndTime, meetingIsPast } = useMemo(() => {
+  const { meetingEndTime, meetingIsPast } = useMemo(() => {
     if (!meeting.date || !meeting.time) return { meetingEndTime: new Date(), meetingIsPast: true };
 
     const meetingDate = new Date(meeting.date);
@@ -283,8 +284,9 @@ const MeetingCard = ({ meeting, onRespond, onDelete }: { meeting: Meeting, onRes
     <Card className={cn(meetingIsPast && "opacity-60")}>
       <CardHeader>
         <CardTitle>{meeting.title}</CardTitle>
-        <CardDescription className="flex items-center gap-4 pt-2 text-sm">
+        <CardDescription className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2 text-sm">
           <span className="flex items-center gap-2"><CalendarIcon className="w-4 h-4"/>{format(new Date(meeting.date), "EEE, MMM d")} at {meeting.time} {meetingIsPast && <Badge variant="outline">Past</Badge>}</span>
+          <span className="flex items-center gap-2"><Clock className="w-4 h-4"/>{meeting.durationInMinutes || 50} min</span>
           <span className="flex items-center gap-2"><User className="w-4 h-4"/>Organized by {meeting.organizerName}</span>
         </CardDescription>
       </CardHeader>
@@ -357,6 +359,14 @@ const MeetingCard = ({ meeting, onRespond, onDelete }: { meeting: Meeting, onRes
   );
 };
 
+const MeetingList = ({ meetings, onRespond, onDelete }: { meetings: Meeting[], onRespond: (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => void, onDelete: (meetingId: string) => void }) => {
+    return (
+        <div className="space-y-4">
+            {meetings.map(m => <MeetingCard key={m.id} meeting={m} onRespond={onRespond} onDelete={onDelete} />)}
+        </div>
+    )
+}
+
 
 export default function MeetingsPage() {
   const { meetings, currentUserProfile, loading, respondToMeeting, deleteMeeting, hasAdminPrivileges } = useAppContext();
@@ -370,40 +380,61 @@ export default function MeetingsPage() {
     }
   }, [currentUser, authLoading, router]);
 
-  const { allMeetings, organizedMeetings, invitedMeetings, pendingInvites } = useMemo(() => {
-    if (!currentUserProfile) return { allMeetings: [], organizedMeetings: [], invitedMeetings: [], pendingInvites: [] };
-    
+  const {
+      upcomingAll, pastAll,
+      upcomingInvited, pastInvited,
+      upcomingOrganized, pastOrganized,
+      pendingInvites
+  } = useMemo(() => {
+    if (!currentUserProfile) return { upcomingAll: [], pastAll: [], upcomingInvited: [], pastInvited: [], upcomingOrganized: [], pastOrganized: [], pendingInvites: [] };
+
+    const now = new Date();
     const sortFn = (a: Meeting, b: Meeting) => {
         if (!a.date || !b.date) return 0;
-        const dateCompare = b.date - a.date;
-        if (dateCompare !== 0) return dateCompare;
-        return a.time.localeCompare(b.time);
+        return a.date - b.date || a.time.localeCompare(b.time);
     };
 
-    const organized = meetings.filter(m => m.organizerId === currentUserProfile.id);
-    const invited = meetings.filter(m => m.organizerId !== currentUserProfile.id && m.attendees.some(a => a.userId === currentUserProfile.id));
-    const all = [...organized, ...invited].sort(sortFn);
-    const pending = invited.filter(m => {
-        const attendee = m.attendees.find(a => a.userId === currentUserProfile.id);
-        if (!attendee || !m.date) return false;
+    const allMyMeetings = meetings.filter(m => m.organizerId === currentUserProfile.id || m.attendees.some(a => a.userId === currentUserProfile.id));
 
+    const upcoming: Meeting[] = [];
+    const past: Meeting[] = [];
+
+    allMyMeetings.forEach(m => {
+        if (!m.date || !m.time) {
+            past.push(m);
+            return;
+        }
         const meetingDate = new Date(m.date);
         const [timePart, modifier] = m.time.split(' ');
         let [hours, minutes] = timePart.split(':').map(Number);
         if (modifier && modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
         if (modifier && modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
-
         const startDate = new Date(meetingDate.getFullYear(), meetingDate.getMonth(), meetingDate.getDate(), hours, minutes);
         const endDate = addMinutes(startDate, m.durationInMinutes || 50);
 
-        return attendee.status === 'pending' && !isPast(endDate);
+        if (isPast(endDate)) {
+            past.push(m);
+        } else {
+            upcoming.push(m);
+        }
     });
     
-    return { 
-        allMeetings: all, 
-        organizedMeetings: organized.sort(sortFn), 
-        invitedMeetings: invited.sort(sortFn), 
-        pendingInvites: pending 
+    upcoming.sort(sortFn);
+    past.sort((a,b) => (b.date || 0) - (a.date || 0));
+
+    const pending = upcoming.filter(m => {
+        const attendee = m.attendees.find(a => a.userId === currentUserProfile.id);
+        return attendee?.status === 'pending';
+    });
+
+    return {
+        upcomingAll: upcoming,
+        pastAll: past,
+        upcomingInvited: upcoming.filter(m => m.organizerId !== currentUserProfile.id),
+        pastInvited: past.filter(m => m.organizerId !== currentUserProfile.id),
+        upcomingOrganized: upcoming.filter(m => m.organizerId === currentUserProfile.id),
+        pastOrganized: past.filter(m => m.organizerId === currentUserProfile.id),
+        pendingInvites: pending
     };
   }, [meetings, currentUserProfile]);
   
@@ -426,6 +457,40 @@ export default function MeetingsPage() {
         console.error(e);
     }
   };
+
+  const renderMeetingSection = (upcoming: Meeting[], past: Meeting[], noUpcomingMsg: string, noPastMsg: string, emptyMsg: string, emptySubMsg: string) => {
+    if (upcoming.length === 0 && past.length === 0) {
+        return (
+            <div className="text-center py-20 text-muted-foreground border rounded-lg">
+                <p className="text-lg font-medium">{emptyMsg}</p>
+                <p>{emptySubMsg}</p>
+            </div>
+        );
+    }
+    return (
+        <div className="space-y-4">
+            {upcoming.length > 0 ? (
+                <MeetingList meetings={upcoming} onRespond={handleRespond} onDelete={handleDelete} />
+            ) : (
+                <div className="text-center py-10 text-muted-foreground border rounded-lg">
+                    <p>{noUpcomingMsg}</p>
+                </div>
+            )}
+            {past.length > 0 && (
+                <Accordion type="single" collapsible className="w-full">
+                    <AccordionItem value="past-meetings">
+                        <AccordionTrigger className="text-lg font-semibold">Past Meetings ({past.length})</AccordionTrigger>
+                        <AccordionContent>
+                           <div className="pt-4 space-y-4">
+                            <MeetingList meetings={past} onRespond={handleRespond} onDelete={handleDelete} />
+                           </div>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
+            )}
+        </div>
+    )
+  }
 
   if (loading || authLoading) {
     return <div className="flex items-center justify-center min-h-screen"><p>Loading meetings...</p></div>;
@@ -450,35 +515,14 @@ export default function MeetingsPage() {
           </TabsTrigger>
           <TabsTrigger value="organized">Organized by Me</TabsTrigger>
         </TabsList>
-        <TabsContent value="all" className="space-y-4 pt-4">
-          {allMeetings.length > 0 ? (
-            allMeetings.map(m => <MeetingCard key={m.id} meeting={m} onRespond={handleRespond} onDelete={handleDelete} />)
-          ) : (
-            <div className="text-center py-20 text-muted-foreground border rounded-lg">
-                <p className="text-lg font-medium">No meetings yet</p>
-                <p>You haven't been invited to or organized any meetings.</p>
-            </div>
-          )}
+        <TabsContent value="all" className="pt-4">
+            {renderMeetingSection(upcomingAll, pastAll, "No upcoming meetings.", "No past meetings.", "No meetings yet", "You haven't been invited to or organized any meetings.")}
         </TabsContent>
-        <TabsContent value="invitations" className="space-y-4 pt-4">
-          {invitedMeetings.length > 0 ? (
-            invitedMeetings.map(m => <MeetingCard key={m.id} meeting={m} onRespond={handleRespond} onDelete={handleDelete} />)
-          ) : (
-            <div className="text-center py-20 text-muted-foreground border rounded-lg">
-                <p className="text-lg font-medium">No invitations yet</p>
-                <p>You haven't been invited to any meetings.</p>
-            </div>
-          )}
+        <TabsContent value="invitations" className="pt-4">
+            {renderMeetingSection(upcomingInvited, pastInvited, "No upcoming invitations.", "No past invitations.", "No invitations yet", "You haven't been invited to any meetings.")}
         </TabsContent>
-        <TabsContent value="organized" className="space-y-4 pt-4">
-           {organizedMeetings.length > 0 ? (
-            organizedMeetings.map(m => <MeetingCard key={m.id} meeting={m} onRespond={handleRespond} onDelete={handleDelete} />)
-          ) : (
-            <div className="text-center py-20 text-muted-foreground border rounded-lg">
-                <p className="text-lg font-medium">You haven't organized any meetings</p>
-                <p>Schedule a meeting from the 'View Schedule' page.</p>
-            </div>
-          )}
+        <TabsContent value="organized" className="pt-4">
+            {renderMeetingSection(upcomingOrganized, pastOrganized, "No upcoming organized meetings.", "No past organized meetings.", "You haven't organized any meetings", "Schedule a meeting from the 'View Schedule' page.")}
         </TabsContent>
       </Tabs>
     </div>
