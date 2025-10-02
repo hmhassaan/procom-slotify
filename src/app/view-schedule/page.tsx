@@ -121,7 +121,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
   const [isCreating, setIsCreating] = useState(false);
   const [location, setLocation] = useState("");
   const [externalAttendees, setExternalAttendees] = useState("");
-  const [generateMeetLink, setGenerateMeetLink] = useState(true);
+  const [generateMeetLink, setGenerateMeetLink] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -134,7 +134,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         setDuration(50);
         setLocation("");
         setExternalAttendees("");
-        setGenerateMeetLink(true);
+        setGenerateMeetLink(false);
 
         const startTimeStr = time.split(/[-–]/)[0].trim();
         const [hourStr, minuteStr] = startTimeStr.split(':');
@@ -476,7 +476,9 @@ export default function ViewSchedulePage() {
                 let hour = parseInt(hourStr, 10);
                 const minute = parseInt(minuteStr, 10) || 0;
                 if ((hour >= 1 && hour <= 7) || hour === 12) {
-                    if (hour >= 1 && hour <= 7) hour += 12;
+                    if (hour !== 12) {
+                        hour += 12;
+                    }
                 }
                 return hour * 60 + minute;
             };
@@ -600,13 +602,13 @@ const userMeetingsBySlot = useMemo(() => {
         
         return hours * 60 + (minutes || 0);
     };
-    
+
     const parseSlotTimeToMinutes = (hourStr: string, minuteStr: string = "0"): number => {
         let hour = parseInt(hourStr, 10);
         const minute = parseInt(minuteStr, 10) || 0;
         
         if ((hour >= 1 && hour <= 7) || hour === 12) {
-            if (hour !== 12) {
+             if (hour !== 12) {
                 hour += 12;
             }
         }
@@ -826,3 +828,6 @@ const userMeetingsBySlot = useMemo(() => {
 
 
 
+
+
+    

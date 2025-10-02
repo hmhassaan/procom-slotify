@@ -43,7 +43,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
     const [location, setLocation] = useState("");
     const [externalAttendees, setExternalAttendees] = useState("");
-    const [generateMeetLink, setGenerateMeetLink] = useState(true);
+    const [generateMeetLink, setGenerateMeetLink] = useState(false);
   
     useEffect(() => {
         if (isOpen) {
@@ -55,7 +55,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
             setDuration(50);
             setLocation("");
             setExternalAttendees("");
-            setGenerateMeetLink(true);
+            setGenerateMeetLink(false);
             setIsCreating(false);
         }
     }, [isOpen]);
@@ -582,3 +582,5 @@ export default function MeetingsPage() {
     </div>
   );
 }
+
+    
