@@ -139,8 +139,8 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         // University Time Slot Logic: 8-11 are AM, others are PM.
         if ((hour >= 1 && hour <= 7) || hour === 12) { 
              amPm = "PM";
-             if(hour >=1 && hour <=7) displayHour = hour; // Keep 1-7 as is for 12-hour display
-             else if (hour === 12) displayHour = 12; // 12 PM
+             if(hour >=1 && hour <=7) displayHour = hour;
+             else if (hour === 12) displayHour = 12;
         } else {
              amPm = "AM";
              displayHour = hour;
@@ -538,36 +538,53 @@ const userMeetingsBySlot = useMemo(() => {
         meeting.attendees.some(a => a.userId === currentUserProfile.id && a.status === 'accepted')
     );
 
-    const parseTimeToMinutes = (timeStr: string): number => {
+    const parseMeetingTimeToMinutes = (timeStr: string): number => {
         const [timePart, modifier] = timeStr.split(' ');
+        if (!timePart) return NaN;
         let [hours, minutes] = timePart.split(':').map(Number);
+        if (isNaN(hours)) hours = 0;
+        if (isNaN(minutes)) minutes = 0;
 
         if (modifier && modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
         if (modifier && modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
         
-        return hours * 60 + (minutes || 0);
+        return hours * 60 + minutes;
+    };
+    
+    const parseSlotTimeToMinutes = (hourStr: string, minuteStr: string = "0"): number => {
+        let hour = parseInt(hourStr, 10);
+        const minute = parseInt(minuteStr, 10) || 0;
+        
+        if ((hour >= 1 && hour <= 7) || hour === 12) {
+            if (hour >= 1 && hour <= 7) {
+                hour += 12;
+            }
+        }
+        return hour * 60 + minute;
     };
 
+
     acceptedMeetings.forEach(meeting => {
-        if (!meeting.date) return;
+        if (!meeting.date || !meeting.time) return;
 
         const meetingDate = new Date(meeting.date);
         const meetingDay = format(meetingDate, "eeee");
 
         if (!weekdays.includes(meetingDay)) return;
 
-        const meetingStartInMinutes = parseTimeToMinutes(meeting.time);
-        const meetingEndInMinutes = meetingStartInMinutes + 50; // Assuming 50-minute meetings
+        const meetingStartInMinutes = parseMeetingTimeToMinutes(meeting.time);
+        const meetingEndInMinutes = meetingStartInMinutes + 50; 
+
+        if (isNaN(meetingStartInMinutes)) return;
 
         timeSlots.forEach(slot => {
-            const [slotStartStr, slotEndStr] = slot.split(/[-–]/);
-            const [slotStartHour, slotStartMinute] = slotStartStr.trim().split(':').map(Number);
-            const slotStartInMinutes = slotStartHour * 60 + (slotStartMinute || 0);
+            const [slotStart, slotEnd] = slot.split(/[-–]/).map(s => s.trim());
+            const [startHour, startMinute] = slotStart.split(':');
+            const [endHour, endMinute] = (slotEnd || slotStart).split(':');
+
+            const slotStartInMinutes = parseSlotTimeToMinutes(startHour, startMinute);
+            const slotEndInMinutes = parseSlotTimeToMinutes(endHour, endMinute);
             
-            const [slotEndHour, slotEndMinute] = (slotEndStr || slotStartStr).trim().split(':').map(Number);
-            const slotEndInMinutes = slotEndHour * 60 + (slotEndMinute || 0);
-            
-            // Check for overlap
             if (meetingStartInMinutes < slotEndInMinutes && meetingEndInMinutes > slotStartInMinutes) {
                 const key = `${meetingDay}-${slot}`;
                 const existing = map.get(key) || [];
@@ -742,4 +759,5 @@ const userMeetingsBySlot = useMemo(() => {
     </TooltipProvider>
   );
 }
+
 
