@@ -47,7 +47,7 @@ interface AppContextType extends AppState {
   requestPushSubscription: () => Promise<void>;
   disablePushNotifications: () => Promise<void>;
   isPushSubscribed: boolean;
-  createMeeting: (meetingData: { title: string; date: number; time: string; durationInMinutes?: number, attendeeIds: string[] }) => Promise<void>;
+  createMeeting: (meetingData: { title: string; date: number; time: string; durationInMinutes: number, attendeeIds: string[], location?: string, externalAttendees?: string[] }) => Promise<void>;
   respondToMeeting: (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => Promise<void>;
   deleteMeeting: (meetingId: string) => Promise<void>;
 }
@@ -280,7 +280,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [currentUserProfile, addNotification, handleUserTeamChange]);
   
-  const createMeeting = useCallback(async (meetingData: { title: string; date: number; time: string; durationInMinutes?: number, attendeeIds: string[] }) => {
+  const createMeeting = useCallback(async (meetingData: { title: string; date: number; time: string; durationInMinutes: number, attendeeIds: string[], location?: string, externalAttendees?: string[] }) => {
     if (!currentUserProfile) throw new Error("User not authenticated");
 
     const allInvitedUserIds = [...new Set([currentUserProfile.id, ...meetingData.attendeeIds])];
@@ -295,10 +295,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         title: meetingData.title,
         date: meetingData.date,
         time: meetingData.time,
-        durationInMinutes: meetingData.durationInMinutes || 50,
+        durationInMinutes: meetingData.durationInMinutes,
         organizerId: currentUserProfile.id,
         organizerName: currentUserProfile.name,
         attendees,
+        location: meetingData.location || "",
+        externalAttendees: meetingData.externalAttendees || [],
         createdAt: Date.now()
     };
 
@@ -325,7 +327,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             time: meetingData.time,
             durationInMinutes: newMeeting.durationInMinutes,
             organizerId: currentUserProfile.id,
-            attendeeIds: meetingData.attendeeIds
+            attendeeIds: meetingData.attendeeIds,
+            location: meetingData.location,
+            externalAttendees: meetingData.externalAttendees
         });
         console.log("createCalendarEventFlow finished.");
     } catch (e) {

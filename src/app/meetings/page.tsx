@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, X, Calendar as CalendarIcon, User, Users, Trash2, CalendarPlus, Clock } from "lucide-react";
+import { Check, X, Calendar as CalendarIcon, User, Users, Trash2, CalendarPlus, Clock, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Meeting, MeetingAttendeeStatus, User as AppUser, Position } from "@/app/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -41,6 +41,8 @@ const ScheduleMeetingFromMeetingsPage = () => {
     const [timeAmPm, setTimeAmPm] = useState("AM");
     const [duration, setDuration] = useState(50);
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+    const [location, setLocation] = useState("");
+    const [externalAttendees, setExternalAttendees] = useState("");
   
     useEffect(() => {
         if (isOpen) {
@@ -50,6 +52,8 @@ const ScheduleMeetingFromMeetingsPage = () => {
             setTimeInput("09:00");
             setTimeAmPm("AM");
             setDuration(50);
+            setLocation("");
+            setExternalAttendees("");
             setIsCreating(false);
         }
     }, [isOpen]);
@@ -59,13 +63,22 @@ const ScheduleMeetingFromMeetingsPage = () => {
         if (!meetingTitle.trim()) { toast({ variant: "destructive", title: "Title is required" }); return; }
         if (!selectedDate) { toast({ variant: "destructive", title: "Date is required" }); return; }
         if (!timeInput.trim()) { toast({ variant: "destructive", title: "Time is required" }); return; }
-        if (selectedUserIds.length === 0) { toast({ variant: "destructive", title: "Select at least one member" }); return; }
+        if (selectedUserIds.length === 0 && !externalAttendees.trim()) { toast({ variant: "destructive", title: "Select at least one member or add an external attendee" }); return; }
         if (!currentUserProfile) return;
   
         setIsCreating(true);
         try {
             const finalTime = `${timeInput} ${timeAmPm}`;
-            await createMeeting({ title: meetingTitle, date: selectedDate.getTime(), time: finalTime, durationInMinutes: duration, attendeeIds: selectedUserIds });
+            const externalEmails = externalAttendees.split(/[\n,;]+/).map(e => e.trim()).filter(Boolean);
+            await createMeeting({ 
+                title: meetingTitle, 
+                date: selectedDate.getTime(), 
+                time: finalTime, 
+                durationInMinutes: duration, 
+                attendeeIds: selectedUserIds,
+                location: location.trim(),
+                externalAttendees: externalEmails,
+            });
             toast({ title: "Meeting Scheduled", description: "Invitations have been sent." });
             setIsOpen(false);
         } catch (e) {
@@ -139,6 +152,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
                 </DialogHeader>
                 <div className="space-y-4">
                     <Input id="meeting-title" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} placeholder="Meeting Title" />
+                    <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location (e.g., Cafe, Library) - Optional" />
                     <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
                         <Popover>
                             <PopoverTrigger asChild>
@@ -163,6 +177,10 @@ const ScheduleMeetingFromMeetingsPage = () => {
                             <Input id="duration" type="number" value={duration} onChange={(e) => setDuration(parseInt(e.target.value, 10) || 0)} className="w-[60px] text-center" />
                             <Label htmlFor="duration" className="text-sm text-muted-foreground">min</Label>
                         </div>
+                    </div>
+                    <div>
+                         <Label htmlFor="external-attendees">External Attendees (Optional)</Label>
+                         <Textarea id="external-attendees" value={externalAttendees} onChange={(e) => setExternalAttendees(e.target.value)} placeholder="Enter comma-separated emails..."/>
                     </div>
                     <div>
                         <div className="flex justify-between items-center mb-2">
@@ -288,12 +306,13 @@ const MeetingCard = ({ meeting, onRespond, onDelete }: { meeting: Meeting, onRes
           <span className="flex items-center gap-2"><CalendarIcon className="w-4 h-4"/>{format(new Date(meeting.date), "EEE, MMM d")} at {meeting.time} {meetingIsPast && <Badge variant="outline">Past</Badge>}</span>
           <span className="flex items-center gap-2"><Clock className="w-4 h-4"/>{meeting.durationInMinutes || 50} min</span>
           <span className="flex items-center gap-2"><User className="w-4 h-4"/>Organized by {meeting.organizerName}</span>
+          {meeting.location && <span className="flex items-center gap-2"><MapPin className="w-4 h-4"/>{meeting.location}</span>}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex justify-between items-start">
           <div className="space-y-2">
-            <h4 className="font-semibold flex items-center gap-2"><Users className="w-4 h-4" />Attendees ({meeting.attendees.length})</h4>
+            <h4 className="font-semibold flex items-center gap-2"><Users className="w-4 h-4" />Attendees ({meeting.attendees.length + (meeting.externalAttendees?.length || 0)})</h4>
             <div className="flex flex-wrap gap-2">
               {meeting.attendees.map(attendee => (
                  <TooltipProvider key={attendee.userId}>
@@ -309,6 +328,23 @@ const MeetingCard = ({ meeting, onRespond, onDelete }: { meeting: Meeting, onRes
                         </TooltipTrigger>
                          <TooltipContent>
                            {isOrganizer && attendee.status === 'declined' && attendee.responseReason ? <p>Reason: {attendee.responseReason}</p> : isOrganizer ? <p>Status: {attendee.status}</p> : <p>{attendee.name}</p>}
+                        </TooltipContent>
+                    </Tooltip>
+                 </TooltipProvider>
+              ))}
+              {meeting.externalAttendees?.map(email => (
+                 <TooltipProvider key={email}>
+                    <Tooltip>
+                        <TooltipTrigger>
+                           <div className="flex items-center gap-2 p-1.5 rounded-lg border">
+                                <Avatar className="h-6 w-6 text-xs">
+                                <AvatarFallback>{email.charAt(0).toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                <span className="text-sm italic">{email}</span>
+                           </div>
+                        </TooltipTrigger>
+                         <TooltipContent>
+                           <p>External Attendee</p>
                         </TooltipContent>
                     </Tooltip>
                  </TooltipProvider>
@@ -477,7 +513,7 @@ export default function MeetingsPage() {
                 </div>
             )}
             {past.length > 0 && (
-                <Accordion type="single" collapsible className="w-full">
+                <Accordion type="single" collapsible className="w-full" defaultValue="">
                     <AccordionItem value="past-meetings">
                         <AccordionTrigger className="text-lg font-semibold">Past Meetings ({past.length})</AccordionTrigger>
                         <AccordionContent>

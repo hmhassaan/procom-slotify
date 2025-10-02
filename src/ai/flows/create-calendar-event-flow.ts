@@ -21,9 +21,11 @@ const CreateCalendarEventInputSchema = z.object({
   title: z.string(),
   date: z.number(), // timestamp
   time: z.string(), // e.g., "9:00 AM", "1:30 PM", or "09:50-10:40"
-  durationInMinutes: z.number().optional(),
+  durationInMinutes: z.number(),
   organizerId: z.string(),
   attendeeIds: z.array(z.string()),
+  location: z.string().optional(),
+  externalAttendees: z.array(z.string()).optional(),
 });
 export type CreateCalendarEventInput = z.infer<typeof CreateCalendarEventInputSchema>;
 
@@ -34,7 +36,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     inputSchema: CreateCalendarEventInputSchema,
     outputSchema: z.void(),
   },
-  async ({ meetingId, title, date, time, durationInMinutes, organizerId, attendeeIds }) => {
+  async ({ meetingId, title, date, time, durationInMinutes, organizerId, attendeeIds, location, externalAttendees }) => {
     console.log('Starting createCalendarEventFlow...');
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.GOOGLE_REDIRECT_URI) {
       console.warn('Google OAuth credentials are not configured. Skipping calendar event creation.');
@@ -54,37 +56,45 @@ export const createCalendarEventFlow = ai.defineFlow(
     console.log(`Organizer found: ${organizer.email}`);
     
     const allUserIdsToFetch = [...new Set([organizerId, ...attendeeIds])];
-    if (allUserIdsToFetch.length === 0) {
-        console.log('No attendees to invite. Skipping calendar event creation.');
-        return;
+    
+    let internalAttendeeEmails: { email: string }[] = [];
+    if (allUserIdsToFetch.length > 0) {
+        console.log(`Querying for ${allUserIdsToFetch.length} internal users...`);
+
+        // Batch Firestore queries since 'in' operator has a limit of 30 in a single query.
+        const userChunks = [];
+        for (let i = 0; i < allUserIdsToFetch.length; i += 30) {
+          userChunks.push(allUserIdsToFetch.slice(i, i + 30));
+        }
+
+        const allUsers: User[] = [];
+        for (const chunk of userChunks) {
+          const usersQuery = query(collection(db, 'users'), where('__name__', 'in', chunk));
+          const usersSnapshot = await getDocs(usersQuery);
+          usersSnapshot.forEach(d => {
+            allUsers.push(d.data() as User);
+          });
+        }
+        
+        internalAttendeeEmails = allUsers
+            .filter(u => u.email && u.id !== organizerId) // Exclude organizer from attendee list
+            .map(u => ({ email: u.email! }));
+
+        console.log(`Found ${internalAttendeeEmails.length} internal attendees with emails.`);
     }
 
-    console.log(`Querying for ${allUserIdsToFetch.length} users...`);
+    const externalAttendeeEmails = (externalAttendees || [])
+        .map(email => email.trim())
+        .filter(email => email)
+        .map(email => ({ email }));
+    
+    console.log(`Found ${externalAttendeeEmails.length} external attendees.`);
 
-    // Batch Firestore queries since 'in' operator has a limit of 30 in a single query.
-    const userChunks = [];
-    for (let i = 0; i < allUserIdsToFetch.length; i += 30) {
-      userChunks.push(allUserIdsToFetch.slice(i, i + 30));
-    }
-
-    const allUsers: User[] = [];
-    for (const chunk of userChunks) {
-      const usersQuery = query(collection(db, 'users'), where('__name__', 'in', chunk));
-      const usersSnapshot = await getDocs(usersQuery);
-      usersSnapshot.forEach(d => {
-        allUsers.push(d.data() as User);
-      });
-    }
-
-    const attendeeEmails = allUsers
-      .filter(u => u.email && u.id !== organizerId) // Exclude organizer from attendee list
-      .map(u => ({ email: u.email }));
-
-    console.log(`Found ${attendeeEmails.length} attendees with emails.`);
+    const allAttendeeEmails = [...internalAttendeeEmails, ...externalAttendeeEmails];
     
     const timeZone = 'Asia/Karachi';
 
-    const parseTime = (timeStr: string) => {
+    const parseTime = (timeStr: string): string | null => {
         timeStr = timeStr.trim();
         
         // Handle range format like "9:00-10:00" or "9:00 AM-10:00 AM"
@@ -99,7 +109,8 @@ export const createCalendarEventFlow = ai.defineFlow(
             if (!timePart || !modifier) return null;
 
             let [hours, minutes] = timePart.split(':').map(Number);
-            if (isNaN(hours) || isNaN(minutes)) return null;
+            if (isNaN(hours)) hours = 0;
+            if (isNaN(minutes)) minutes = 0;
 
             if (hours === 12) {
                 hours = modifier.toUpperCase() === 'AM' ? 0 : 12;
@@ -112,18 +123,13 @@ export const createCalendarEventFlow = ai.defineFlow(
             return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
         }
         
-        // Handle 24-hour format like "09:50" or "9:50" based on slot conventions
+        // Handle 24-hour format like "09:50" or "9:50"
         const parts = timeStr.split(':');
         if (parts.length === 2) {
-            let hours = parseInt(parts[0]);
-            const minutes = parseInt(parts[1]);
+            const hours = parseInt(parts[0], 10);
+            const minutes = parseInt(parts[1], 10);
             if (!isNaN(hours) && !isNaN(minutes) && hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
-                // University Time Slot Logic: 8-11 are AM, others are PM.
-                // 12 PM is noon. 1-7 PM are afternoon/evening.
-                if ((hours >= 1 && hours <= 7) || hours === 12) { 
-                    if (hours < 12) hours += 12;
-                }
-                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+                 return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
             }
         }
         
@@ -144,12 +150,10 @@ export const createCalendarEventFlow = ai.defineFlow(
     const startUtc = fromZonedTime(`${ymd} ${startTimeStr}:00`, timeZone);
     let endUtc;
 
-    if (durationInMinutes) {
-        endUtc = addMinutes(startUtc, durationInMinutes);
-    } else if (endTimeStr) {
+    if (endTimeStr) {
         endUtc = fromZonedTime(`${ymd} ${endTimeStr}:00`, timeZone);
     } else {
-        endUtc = addMinutes(startUtc, 50);
+        endUtc = addMinutes(startUtc, durationInMinutes);
     }
 
 
@@ -159,9 +163,10 @@ export const createCalendarEventFlow = ai.defineFlow(
 
     const event = {
       summary: title,
+      location: location || undefined,
       start: { dateTime: startUtc.toISOString(), timeZone },
       end:   { dateTime: endUtc.toISOString(),   timeZone },
-      attendees: attendeeEmails,
+      attendees: allAttendeeEmails,
       organizer: { email: organizer.email },
       reminders: {
         useDefault: false,

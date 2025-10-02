@@ -14,7 +14,7 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { PlusCircle, Trash2, Filter, Star, ChevronDown, CalendarPlus, Calendar as CalendarIcon } from "lucide-react";
+import { PlusCircle, Trash2, Filter, Star, ChevronDown, CalendarPlus, Calendar as CalendarIcon, MapPin } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -118,6 +119,8 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
   const [timeAmPm, setTimeAmPm] = useState("AM");
   const [duration, setDuration] = useState(50);
   const [isCreating, setIsCreating] = useState(false);
+  const [location, setLocation] = useState("");
+  const [externalAttendees, setExternalAttendees] = useState("");
 
   useEffect(() => {
     if (isOpen) {
@@ -128,6 +131,8 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         setSelectedUserIds(defaultSelectedIds);
         setMeetingTitle("");
         setDuration(50);
+        setLocation("");
+        setExternalAttendees("");
 
         const startTimeStr = time.split(/[-–]/)[0].trim();
         const [hourStr, minuteStr] = startTimeStr.split(':');
@@ -137,11 +142,9 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         let amPm = "AM";
         let displayHour = hour;
 
-        // University Time Slot Logic: 8-11 are AM, others are PM.
         if ((hour >= 1 && hour <= 7) || hour === 12) { 
              amPm = "PM";
-             if(hour >=1 && hour <=7) displayHour = hour;
-             else if (hour === 12) displayHour = 12;
+             displayHour = hour;
         } else {
              amPm = "AM";
              displayHour = hour;
@@ -178,8 +181,8 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
       toast({ variant: "destructive", title: "Time is required" });
       return;
     }
-    if (selectedUserIds.length === 0) {
-      toast({ variant: "destructive", title: "Select at least one member" });
+    if (selectedUserIds.length === 0 && !externalAttendees.trim()) {
+      toast({ variant: "destructive", title: "Select at least one member or add an external attendee" });
       return;
     }
     if (!currentUserProfile) return;
@@ -187,12 +190,16 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
     setIsCreating(true);
     try {
       const finalTime = `${timeInput} ${timeAmPm}`;
+      const externalEmails = externalAttendees.split(/[\n,;]+/).map(e => e.trim()).filter(Boolean);
+
       await createMeeting({
         title: meetingTitle,
         date: selectedDate.getTime(),
         time: finalTime,
         durationInMinutes: duration,
         attendeeIds: selectedUserIds,
+        location: location.trim(),
+        externalAttendees: externalEmails,
       });
       toast({ title: "Meeting Scheduled", description: "Invitations have been sent." });
       setIsOpen(false);
@@ -270,6 +277,10 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
             <Label htmlFor="meeting-title">Meeting Title</Label>
             <Input id="meeting-title" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} />
           </div>
+           <div>
+            <Label htmlFor="location">Location (Optional)</Label>
+            <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g., Cafe, Library"/>
+          </div>
            <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
             <Popover>
                 <PopoverTrigger asChild>
@@ -294,6 +305,10 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
                 <Input id="duration" type="number" value={duration} onChange={(e) => setDuration(parseInt(e.target.value, 10) || 0)} className="w-[60px] text-center" />
                 <Label htmlFor="duration" className="text-sm text-muted-foreground">min</Label>
             </div>
+          </div>
+          <div>
+            <Label htmlFor="external-attendees">External Attendees (Optional)</Label>
+            <Textarea id="external-attendees" value={externalAttendees} onChange={(e) => setExternalAttendees(e.target.value)} placeholder="Enter comma-separated emails..."/>
           </div>
           <div>
             <div className="flex justify-between items-center mb-2">
@@ -563,6 +578,7 @@ const userMeetingsBySlot = useMemo(() => {
     if (!currentUserProfile || !meetings) return map;
 
     const acceptedMeetings = meetings.filter(meeting =>
+        meeting.organizerId === currentUserProfile.id ||
         meeting.attendees.some(a => a.userId === currentUserProfile.id && a.status === 'accepted')
     );
 
@@ -583,9 +599,7 @@ const userMeetingsBySlot = useMemo(() => {
         const minute = parseInt(minuteStr, 10) || 0;
         
         if ((hour >= 1 && hour <= 7) || hour === 12) {
-            if (hour >= 1 && hour <= 7) {
-                hour += 12;
-            }
+            if (hour >= 1 && hour <= 7) hour += 12;
         }
         return hour * 60 + minute;
     };
@@ -730,8 +744,20 @@ const userMeetingsBySlot = useMemo(() => {
                             <div className="p-3 space-y-3 flex-grow">
                               {userMeetings.length > 0 && (
                                 <div className="border-l-4 border-blue-500 pl-2 text-sm mb-3">
-                                  <p className="font-bold text-blue-600">Your Meeting:</p>
-                                  {userMeetings.map(m => <p key={m.id} className="text-muted-foreground">{m.title}</p>)}
+                                  {userMeetings.map(m => 
+                                  <Tooltip key={m.id} delayDuration={100}>
+                                    <TooltipTrigger asChild>
+                                        <div className="cursor-default">
+                                            <p className="font-bold text-blue-600 truncate">{m.organizerId === currentUserProfile?.id ? "Your Meeting:" : "Meeting:"}</p>
+                                            <p className="text-muted-foreground truncate">{m.title}</p>
+                                        </div>
+                                    </TooltipTrigger>
+                                     <TooltipContent>
+                                        <p className="font-bold">{m.title}</p>
+                                        {m.location && <p className="flex items-center gap-1"><MapPin className="w-3 h-3"/>{m.location}</p>}
+                                     </TooltipContent>
+                                  </Tooltip>
+                                  )}
                                 </div>
                               )}
                               <div>
@@ -786,5 +812,6 @@ const userMeetingsBySlot = useMemo(() => {
     </TooltipProvider>
   );
 }
+
 
 
