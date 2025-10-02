@@ -47,7 +47,7 @@ interface AppContextType extends AppState {
   requestPushSubscription: () => Promise<void>;
   disablePushNotifications: () => Promise<void>;
   isPushSubscribed: boolean;
-  createMeeting: (meetingData: { title: string; date: number; time: string; attendeeIds: string[] }) => Promise<void>;
+  createMeeting: (meetingData: { title: string; date: number; time: string; durationInMinutes?: number, attendeeIds: string[] }) => Promise<void>;
   respondToMeeting: (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => Promise<void>;
   deleteMeeting: (meetingId: string) => Promise<void>;
 }
@@ -280,7 +280,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [currentUserProfile, addNotification, handleUserTeamChange]);
   
-  const createMeeting = useCallback(async (meetingData: { title: string; date: number; time: string; attendeeIds: string[] }) => {
+  const createMeeting = useCallback(async (meetingData: { title: string; date: number; time: string; durationInMinutes?: number, attendeeIds: string[] }) => {
     if (!currentUserProfile) throw new Error("User not authenticated");
 
     const allInvitedUserIds = [...new Set([currentUserProfile.id, ...meetingData.attendeeIds])];
@@ -295,6 +295,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         title: meetingData.title,
         date: meetingData.date,
         time: meetingData.time,
+        durationInMinutes: meetingData.durationInMinutes || 50,
         organizerId: currentUserProfile.id,
         organizerName: currentUserProfile.name,
         attendees,
@@ -322,6 +323,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             title: meetingData.title,
             date: meetingData.date,
             time: meetingData.time,
+            durationInMinutes: newMeeting.durationInMinutes,
             organizerId: currentUserProfile.id,
             attendeeIds: meetingData.attendeeIds
         });
@@ -336,20 +338,26 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     if (!currentUserProfile) throw new Error("User not authenticated");
     
     const meetingRef = doc(db, 'meetings', meetingId);
-    const meetingDoc = await getDoc(meetingRef);
-    if (!meetingDoc.exists()) throw new Error("Meeting not found");
-    
-    const meeting = meetingDoc.data() as Meeting;
-    const newAttendees = meeting.attendees.map(a => {
-      if (a.userId === currentUserProfile.id) {
-        return { ...a, status, responseReason: status === 'declined' ? reason : "" };
-      }
-      return a;
+    await runTransaction(db, async (transaction) => {
+        const meetingDoc = await transaction.get(meetingRef);
+        if (!meetingDoc.exists()) throw new Error("Meeting not found");
+        
+        const meeting = meetingDoc.data() as Meeting;
+        const newAttendees = meeting.attendees.map(a => {
+          if (a.userId === currentUserProfile.id) {
+            return { ...a, status, responseReason: status === 'declined' ? reason : "" };
+          }
+          return a;
+        });
+        
+        transaction.update(meetingRef, { attendees: newAttendees });
     });
     
-    await updateDoc(meetingRef, { attendees: newAttendees });
-    
-    await addNotification(meeting.organizerId, "Meeting Response", `${currentUserProfile.name} has ${status} your invitation to "${meeting.title}".`, '/meetings');
+    const meetingDoc = await getDoc(doc(db, 'meetings', meetingId));
+    if(meetingDoc.exists()) {
+        const meeting = meetingDoc.data() as Meeting;
+        await addNotification(meeting.organizerId, "Meeting Response", `${currentUserProfile.name} has ${status} your invitation to "${meeting.title}".`, '/meetings');
+    }
   }, [currentUserProfile, addNotification]);
   
   const deleteMeeting = useCallback(async (meetingId: string) => {

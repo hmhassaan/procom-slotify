@@ -38,6 +38,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
     const [selectedDate, setSelectedDate] = useState<Date | undefined>();
     const [timeInput, setTimeInput] = useState("09:00");
     const [timeAmPm, setTimeAmPm] = useState("AM");
+    const [duration, setDuration] = useState(50);
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   
     useEffect(() => {
@@ -47,6 +48,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
             setSelectedDate(new Date());
             setTimeInput("09:00");
             setTimeAmPm("AM");
+            setDuration(50);
             setIsCreating(false);
         }
     }, [isOpen]);
@@ -62,7 +64,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
         setIsCreating(true);
         try {
             const finalTime = `${timeInput} ${timeAmPm}`;
-            await createMeeting({ title: meetingTitle, date: selectedDate.getTime(), time: finalTime, attendeeIds: selectedUserIds });
+            await createMeeting({ title: meetingTitle, date: selectedDate.getTime(), time: finalTime, durationInMinutes: duration, attendeeIds: selectedUserIds });
             toast({ title: "Meeting Scheduled", description: "Invitations have been sent." });
             setIsOpen(false);
         } catch (e) {
@@ -136,7 +138,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
                 </DialogHeader>
                 <div className="space-y-4">
                     <Input id="meeting-title" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} placeholder="Meeting Title" />
-                    <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-center">
+                    <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant={"outline"} className={cn("justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}>
@@ -148,14 +150,18 @@ const ScheduleMeetingFromMeetingsPage = () => {
                                 <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
                             </PopoverContent>
                         </Popover>
-                        <Input type="text" value={timeInput} onChange={(e) => setTimeInput(e.target.value)} className="w-[120px]"/>
+                        <Input type="text" value={timeInput} onChange={(e) => setTimeInput(e.target.value)} className="w-[100px]"/>
                         <Select value={timeAmPm} onValueChange={setTimeAmPm}>
-                            <SelectTrigger className="w-[80px]"><SelectValue/></SelectTrigger>
+                            <SelectTrigger className="w-[70px]"><SelectValue/></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="AM">AM</SelectItem>
                                 <SelectItem value="PM">PM</SelectItem>
                             </SelectContent>
                         </Select>
+                        <div className="flex items-center gap-1.5">
+                            <Input id="duration" type="number" value={duration} onChange={(e) => setDuration(parseInt(e.target.value, 10) || 0)} className="w-[60px] text-center" />
+                            <Label htmlFor="duration" className="text-sm text-muted-foreground">min</Label>
+                        </div>
                     </div>
                     <div>
                         <div className="flex justify-between items-center mb-2">
@@ -261,17 +267,16 @@ const MeetingCard = ({ meeting, onRespond, onDelete }: { meeting: Meeting, onRes
 
     const meetingDate = new Date(meeting.date);
 
-    // This logic needs to parse "1:30 PM" correctly.
     const [timePart, modifier] = meeting.time.split(' ');
     let [hours, minutes] = timePart.split(':').map(Number);
     if (modifier && modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
     if (modifier && modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
 
     const startDate = new Date(meetingDate.getFullYear(), meetingDate.getMonth(), meetingDate.getDate(), hours, minutes);
-    const endDate = addMinutes(startDate, 50);
+    const endDate = addMinutes(startDate, meeting.durationInMinutes || 50);
     
     return { meetingEndTime: endDate, meetingIsPast: isPast(endDate) };
-  }, [meeting.date, meeting.time]);
+  }, [meeting.date, meeting.time, meeting.durationInMinutes]);
 
 
   return (
@@ -378,7 +383,21 @@ export default function MeetingsPage() {
     const organized = meetings.filter(m => m.organizerId === currentUserProfile.id);
     const invited = meetings.filter(m => m.organizerId !== currentUserProfile.id && m.attendees.some(a => a.userId === currentUserProfile.id));
     const all = [...organized, ...invited].sort(sortFn);
-    const pending = invited.filter(m => m.attendees.find(a => a.userId === currentUserProfile.id)?.status === 'pending' && m.date && !isPast(new Date(m.date)));
+    const pending = invited.filter(m => {
+        const attendee = m.attendees.find(a => a.userId === currentUserProfile.id);
+        if (!attendee || !m.date) return false;
+
+        const meetingDate = new Date(m.date);
+        const [timePart, modifier] = m.time.split(' ');
+        let [hours, minutes] = timePart.split(':').map(Number);
+        if (modifier && modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
+        if (modifier && modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
+
+        const startDate = new Date(meetingDate.getFullYear(), meetingDate.getMonth(), meetingDate.getDate(), hours, minutes);
+        const endDate = addMinutes(startDate, m.durationInMinutes || 50);
+
+        return attendee.status === 'pending' && !isPast(endDate);
+    });
     
     return { 
         allMeetings: all, 

@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { format, addMinutes, isPast } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -116,6 +116,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [timeInput, setTimeInput] = useState("09:00");
   const [timeAmPm, setTimeAmPm] = useState("AM");
+  const [duration, setDuration] = useState(50);
   const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
@@ -126,8 +127,8 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
             .map(u => u.id);
         setSelectedUserIds(defaultSelectedIds);
         setMeetingTitle("");
+        setDuration(50);
 
-        // Time parsing from slot - extract start time
         const startTimeStr = time.split(/[-–]/)[0].trim();
         const [hourStr, minuteStr] = startTimeStr.split(':');
         let hour = parseInt(hourStr, 10);
@@ -144,11 +145,6 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         } else {
              amPm = "AM";
              displayHour = hour;
-        }
-
-        if (hour > 12) { // for times like 13:00, 14:00
-            displayHour = hour - 12;
-            amPm = "PM";
         }
         
         setTimeAmPm(amPm);
@@ -190,12 +186,12 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
 
     setIsCreating(true);
     try {
-      // Construct the final time string from the user's input.
       const finalTime = `${timeInput} ${timeAmPm}`;
       await createMeeting({
         title: meetingTitle,
         date: selectedDate.getTime(),
         time: finalTime,
+        durationInMinutes: duration,
         attendeeIds: selectedUserIds,
       });
       toast({ title: "Meeting Scheduled", description: "Invitations have been sent." });
@@ -274,7 +270,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
             <Label htmlFor="meeting-title">Meeting Title</Label>
             <Input id="meeting-title" value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} />
           </div>
-           <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-center">
+           <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center">
             <Popover>
                 <PopoverTrigger asChild>
                     <Button id="meeting-date" variant={"outline"} className={cn("w-full justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}>
@@ -286,14 +282,18 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
                     <Calendar mode="single" selected={selectedDate} onSelect={setSelectedDate} initialFocus />
                 </PopoverContent>
             </Popover>
-            <Input type="text" value={timeInput} onChange={(e) => setTimeInput(e.target.value)} className="w-[120px]" />
+            <Input type="text" value={timeInput} onChange={(e) => setTimeInput(e.target.value)} className="w-[100px]" />
             <Select value={timeAmPm} onValueChange={setTimeAmPm}>
-              <SelectTrigger className="w-[80px]"><SelectValue/></SelectTrigger>
+              <SelectTrigger className="w-[70px]"><SelectValue/></SelectTrigger>
               <SelectContent>
                 <SelectItem value="AM">AM</SelectItem>
                 <SelectItem value="PM">PM</SelectItem>
               </SelectContent>
             </Select>
+            <div className="flex items-center gap-1.5">
+                <Input id="duration" type="number" value={duration} onChange={(e) => setDuration(parseInt(e.target.value, 10) || 0)} className="w-[60px] text-center" />
+                <Label htmlFor="duration" className="text-sm text-muted-foreground">min</Label>
+            </div>
           </div>
           <div>
             <div className="flex justify-between items-center mb-2">
@@ -438,12 +438,40 @@ export default function ViewSchedulePage() {
           const userMeetingsInSlot = meetings.filter(m => {
             if (!m.date) return false;
             const meetingDate = new Date(m.date);
-            const meetingDay = format(meetingDate, "eeee"); // "Monday", "Tuesday", etc.
-            
-            const slotStartTime = time.split(/[-–]/)[0];
-            const meetingTimeMatchesSlot = m.time.startsWith(slotStartTime);
+            if (!weekdays.includes(format(meetingDate, "eeee"))) return false;
 
-            return meetingDay === day && meetingTimeMatchesSlot && m.attendees.some(a => a.userId === user.id && a.status === 'accepted');
+            const parseMeetingTimeToMinutes = (timeStr: string): number => {
+                const [timePart, modifier] = timeStr.split(' ');
+                if (!timePart) return NaN;
+                let [hours, minutes] = timePart.split(':').map(Number);
+                if (isNaN(hours)) hours = 0; if (isNaN(minutes)) minutes = 0;
+                if (modifier && modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
+                if (modifier && modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
+                return hours * 60 + (minutes || 0);
+            };
+
+            const parseSlotTimeToMinutes = (hourStr: string, minuteStr: string = "0"): number => {
+                let hour = parseInt(hourStr, 10);
+                const minute = parseInt(minuteStr, 10) || 0;
+                if ((hour >= 1 && hour <= 7) || hour === 12) {
+                    if (hour >= 1 && hour <= 7) hour += 12;
+                }
+                return hour * 60 + minute;
+            };
+
+            const meetingStartInMinutes = parseMeetingTimeToMinutes(m.time);
+            const meetingEndInMinutes = meetingStartInMinutes + (m.durationInMinutes || 50);
+
+            const [slotStart, slotEnd] = time.split(/[-–]/).map(s => s.trim());
+            const [startHour, startMinute] = slotStart.split(':');
+            const slotStartInMinutes = parseSlotTimeToMinutes(startHour, startMinute);
+            
+            const [endHour, endMinute] = (slotEnd || slotStart).split(':');
+            const slotEndInMinutes = parseSlotTimeToMinutes(endHour, endMinute);
+
+            const isMeetingInSlot = meetingStartInMinutes < slotEndInMinutes && meetingEndInMinutes > slotStartInMinutes;
+            
+            return format(meetingDate, "eeee") === day && isMeetingInSlot && m.attendees.some(a => a.userId === user.id && a.status === 'accepted');
           });
 
           if (userMeetingsInSlot.length > 0) {
@@ -542,13 +570,12 @@ const userMeetingsBySlot = useMemo(() => {
         const [timePart, modifier] = timeStr.split(' ');
         if (!timePart) return NaN;
         let [hours, minutes] = timePart.split(':').map(Number);
-        if (isNaN(hours)) hours = 0;
-        if (isNaN(minutes)) minutes = 0;
+        if (isNaN(hours)) hours = 0; if (isNaN(minutes)) minutes = 0;
 
         if (modifier && modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
         if (modifier && modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
         
-        return hours * 60 + minutes;
+        return hours * 60 + (minutes || 0);
     };
     
     const parseSlotTimeToMinutes = (hourStr: string, minuteStr: string = "0"): number => {
@@ -573,16 +600,16 @@ const userMeetingsBySlot = useMemo(() => {
         if (!weekdays.includes(meetingDay)) return;
 
         const meetingStartInMinutes = parseMeetingTimeToMinutes(meeting.time);
-        const meetingEndInMinutes = meetingStartInMinutes + 50; 
+        const meetingEndInMinutes = meetingStartInMinutes + (meeting.durationInMinutes || 50); 
 
         if (isNaN(meetingStartInMinutes)) return;
 
         timeSlots.forEach(slot => {
             const [slotStart, slotEnd] = slot.split(/[-–]/).map(s => s.trim());
             const [startHour, startMinute] = slotStart.split(':');
-            const [endHour, endMinute] = (slotEnd || slotStart).split(':');
-
             const slotStartInMinutes = parseSlotTimeToMinutes(startHour, startMinute);
+            
+            const [endHour, endMinute] = (slotEnd || slotStart).split(':');
             const slotEndInMinutes = parseSlotTimeToMinutes(endHour, endMinute);
             
             if (meetingStartInMinutes < slotEndInMinutes && meetingEndInMinutes > slotStartInMinutes) {

@@ -80,4 +80,6 @@ export type Meeting = {
   attendees: MeetingAttendee[];
   createdAt: number;
   googleIcalUid?: string;
+  durationInMinutes?: number;
 };
+

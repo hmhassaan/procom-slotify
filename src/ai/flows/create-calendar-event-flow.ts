@@ -21,6 +21,7 @@ const CreateCalendarEventInputSchema = z.object({
   title: z.string(),
   date: z.number(), // timestamp
   time: z.string(), // e.g., "9:00 AM", "1:30 PM", or "09:50-10:40"
+  durationInMinutes: z.number().optional(),
   organizerId: z.string(),
   attendeeIds: z.array(z.string()),
 });
@@ -33,7 +34,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     inputSchema: CreateCalendarEventInputSchema,
     outputSchema: z.void(),
   },
-  async ({ meetingId, title, date, time, organizerId, attendeeIds }) => {
+  async ({ meetingId, title, date, time, durationInMinutes, organizerId, attendeeIds }) => {
     console.log('Starting createCalendarEventFlow...');
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.GOOGLE_REDIRECT_URI) {
       console.warn('Google OAuth credentials are not configured. Skipping calendar event creation.');
@@ -143,7 +144,9 @@ export const createCalendarEventFlow = ai.defineFlow(
     const startUtc = fromZonedTime(`${ymd} ${startTimeStr}:00`, timeZone);
     let endUtc;
 
-    if (endTimeStr) {
+    if (durationInMinutes) {
+        endUtc = addMinutes(startUtc, durationInMinutes);
+    } else if (endTimeStr) {
         endUtc = fromZonedTime(`${ymd} ${endTimeStr}:00`, timeZone);
     } else {
         endUtc = addMinutes(startUtc, 50);
