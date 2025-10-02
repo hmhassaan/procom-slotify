@@ -443,7 +443,7 @@ export default function MeetingsPage() {
         </TabsContent>
         <TabsContent value="invitations" className="space-y-4 pt-4">
           {invitedMeetings.length > 0 ? (
-            invitedMeetings.map(m => <MeetingCard key={m.id} meeting={m} isOrganizer={false} onRespond={handleRespond} onDelete={handleDelete} />)
+            invitedMeetings.map(m => <MeetingCard key={m.id} meeting={m} onRespond={handleRespond} onDelete={handleDelete} />)
           ) : (
             <div className="text-center py-20 text-muted-foreground border rounded-lg">
                 <p className="text-lg font-medium">No invitations yet</p>

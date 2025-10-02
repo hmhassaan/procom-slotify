@@ -126,44 +126,21 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         setSelectedUserIds(defaultSelectedIds);
         setMeetingTitle("");
 
-        // Time parsing from slot - extract start time
         const startTimeStr = time.split(/[-–]/)[0].trim();
         const [hourStr, minuteStr] = startTimeStr.split(':');
         let hour = parseInt(hourStr, 10);
         const minute = minuteStr || "00";
 
-        let amPm = "AM";
-        let displayHour = hour;
-
         // University Time Slot Logic: 8-11 are AM, others are PM.
         // 12 PM is noon. 1-7 PM are afternoon/evening.
-        if ((hour >= 1 && hour < 8) || hour === 12) {
-             amPm = "PM";
-             if (hour > 12) displayHour = hour - 12;
-             else if (hour !== 12) displayHour = hour; // 1-7 stay as is
-             else displayHour = 12; // 12 stays 12 for PM
+        if ((hour >= 1 && hour <= 7) || hour === 12) {
+             setTimeAmPm("PM");
+             if (hour > 12) hour = hour - 12;
         } else {
-             amPm = "AM";
-             displayHour = hour;
-        }
-
-        // Correct for 24h format from slots
-        if (hour > 12) {
-            displayHour = hour - 12;
-            amPm = "PM";
-        } else if (hour === 12) {
-            displayHour = 12;
-            amPm = "PM";
-        } else if (hour === 0) {
-            displayHour = 12;
-            amPm = "AM";
-        } else {
-             displayHour = hour;
-             amPm = "AM";
+             setTimeAmPm("AM");
         }
         
-        setTimeAmPm(amPm);
-        setTimeInput(`${String(displayHour).padStart(2, '0')}:${minute}`);
+        setTimeInput(`${String(hour).padStart(2, '0')}:${minute}`);
 
         // Find the next occurrence of the selected day
         const today = new Date();
@@ -542,43 +519,43 @@ export default function ViewSchedulePage() {
   
   const userMeetingsBySlot = useMemo(() => {
     const map = new Map<string, Meeting[]>();
-    if (!currentUserProfile) return map;
+    if (!currentUserProfile || !meetings) return map;
   
-    meetings.forEach(meeting => {
+    const acceptedMeetings = meetings.filter(meeting => 
+        meeting.attendees.some(a => a.userId === currentUserProfile.id && a.status === 'accepted')
+    );
+
+    acceptedMeetings.forEach(meeting => {
       if (!meeting.date) return;
   
-      const isAccepted = meeting.attendees.some(a => a.userId === currentUserProfile.id && a.status === 'accepted');
-      if (!isAccepted) return;
-  
       const meetingDate = new Date(meeting.date);
-      const meetingDay = format(meetingDate, "eeee"); // e.g., "Monday"
+      const meetingDay = format(meetingDate, "eeee");
   
-      // Robust time matching
-      const [meetingTime, modifier] = meeting.time.split(' ');
-      const [hourStr, minuteStr] = meetingTime.split(':');
-      let hours = parseInt(hourStr, 10);
-      const minutes = parseInt(minuteStr, 10);
+      if (!weekdays.includes(meetingDay)) return;
 
-      if (modifier && modifier.toUpperCase() === 'PM' && hours < 12) {
-          hours += 12;
-      }
-      if (modifier && modifier.toUpperCase() === 'AM' && hours === 12) {
-          hours = 0;
-      }
+      const [timePart, modifier] = meeting.time.split(' ');
+      let [hours, minutes] = timePart.split(':').map(Number);
+      if (modifier && modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
+      if (modifier && modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
+      
       const meetingStartInMinutes = hours * 60 + minutes;
+      const meetingEndInMinutes = meetingStartInMinutes + 50; // Assuming 50-minute meetings
 
-      const matchingSlot = timeSlots.find(slot => {
-        const slotStartTimeStr = slot.split(/[-–]/)[0].trim();
-        const [slotHour, slotMinute] = slotStartTimeStr.split(':').map(Number);
-        const slotStartInMinutes = slotHour * 60 + slotMinute;
-        return slotStartInMinutes === meetingStartInMinutes;
+      timeSlots.forEach(slot => {
+        const [slotStartStr, slotEndStr] = slot.split(/[-–]/);
+        const [slotStartHour, slotStartMinute] = slotStartStr.trim().split(':').map(Number);
+        const [slotEndHour, slotEndMinute] = slotEndStr.trim().split(':').map(Number);
+        
+        const slotStartInMinutes = slotStartHour * 60 + slotStartMinute;
+        const slotEndInMinutes = slotEndHour * 60 + slotEndMinute;
+
+        // Check for overlap
+        if (meetingStartInMinutes < slotEndInMinutes && meetingEndInMinutes > slotStartInMinutes) {
+             const key = `${meetingDay}-${slot}`;
+             const existing = map.get(key) || [];
+             map.set(key, [...existing, meeting]);
+        }
       });
-  
-      if (matchingSlot) {
-        const key = `${meetingDay}-${matchingSlot}`;
-        const existing = map.get(key) || [];
-        map.set(key, [...existing, meeting]);
-      }
     });
   
     return map;

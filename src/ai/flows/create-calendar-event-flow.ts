@@ -87,7 +87,6 @@ export const createCalendarEventFlow = ai.defineFlow(
         timeStr = timeStr.trim();
         
         // Handle range format like "9:00-10:00" or "9:00 AM-10:00 AM"
-        // Just take the start time
         const rangeSplit = timeStr.split(/[-–]/);
         if (rangeSplit.length > 1) {
             timeStr = rangeSplit[0].trim();
@@ -120,8 +119,8 @@ export const createCalendarEventFlow = ai.defineFlow(
             if (!isNaN(hours) && !isNaN(minutes) && hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
                 // University Time Slot Logic: 8-11 are AM, others are PM.
                 // 12 PM is noon. 1-7 PM are afternoon/evening.
-                if (hours >= 1 && hours <= 7) { 
-                    hours += 12;
+                if ((hours >= 1 && hours <= 7) || hours === 12) { 
+                    if (hours < 12) hours += 12;
                 }
                 return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
             }
