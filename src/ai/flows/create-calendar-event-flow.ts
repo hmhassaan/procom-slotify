@@ -116,10 +116,8 @@ export const createCalendarEventFlow = ai.defineFlow(
             if (!isNaN(hours) && !isNaN(minutes) && hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
                 // University Time Slot Logic: 8-11 are AM, others are PM.
                 // 12 PM is noon. 1-7 PM are afternoon/evening.
-                if (hours < 8 || hours === 12) { // 12, 1, 2, 3, 4, 5, 6, 7 are PM
-                    if (hours !== 12) {
-                        hours += 12;
-                    }
+                if (hours >= 1 && hours <= 7) { 
+                    hours += 12;
                 }
                 return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
             }
@@ -138,16 +136,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     }
 
     const meetingDate = new Date(date);
-    console.log(`Input date timestamp: ${date}`);
-    console.log(`Meeting date object: ${meetingDate}`);
-    console.log(`Meeting date ISO: ${meetingDate.toISOString()}`);
-    
     const ymd = formatInTimeZone(meetingDate, 'yyyy-MM-dd', timeZone);
-    console.log(`Formatted ymd: ${ymd}`);
-    console.log(`Start time str: ${startTimeStr}`);
-    console.log(`Full datetime string for parsing: ${ymd} ${startTimeStr}:00`);
-
-
     const startUtc = fromZonedTime(`${ymd} ${startTimeStr}:00`, timeZone);
     let endUtc;
 
