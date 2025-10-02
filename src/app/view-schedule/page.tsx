@@ -132,18 +132,34 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         let hour = parseInt(hourStr, 10);
         const minute = minuteStr || "00";
 
-        // Determine AM/PM based on university convention
         let amPm = "AM";
+        let displayHour = hour;
+
+        // University Time Slot Logic: 8-11 are AM, others are PM.
+        // 12 PM is noon. 1-7 PM are afternoon/evening.
         if ((hour >= 1 && hour < 8) || hour === 12) {
              amPm = "PM";
+             if (hour > 12) displayHour = hour - 12;
+             else if (hour !== 12) displayHour = hour; // 1-7 stay as is
+             else displayHour = 12; // 12 stays 12 for PM
+        } else {
+             amPm = "AM";
+             displayHour = hour;
         }
-        
-        // Convert to 12-hour format for display
-        let displayHour = hour;
-        if (hour === 0) {
-            displayHour = 12; // 00:xx -> 12 AM
-        } else if (hour > 12) {
-            displayHour = hour - 12; // 13:xx -> 1 PM
+
+        // Correct for 24h format from slots
+        if (hour > 12) {
+            displayHour = hour - 12;
+            amPm = "PM";
+        } else if (hour === 12) {
+            displayHour = 12;
+            amPm = "PM";
+        } else if (hour === 0) {
+            displayHour = 12;
+            amPm = "AM";
+        } else {
+             displayHour = hour;
+             amPm = "AM";
         }
         
         setTimeAmPm(amPm);
@@ -537,14 +553,25 @@ export default function ViewSchedulePage() {
       const meetingDate = new Date(meeting.date);
       const meetingDay = format(meetingDate, "eeee"); // e.g., "Monday"
   
-      // Find the corresponding time slot
+      // Robust time matching
+      const [meetingTime, modifier] = meeting.time.split(' ');
+      const [hourStr, minuteStr] = meetingTime.split(':');
+      let hours = parseInt(hourStr, 10);
+      const minutes = parseInt(minuteStr, 10);
+
+      if (modifier && modifier.toUpperCase() === 'PM' && hours < 12) {
+          hours += 12;
+      }
+      if (modifier && modifier.toUpperCase() === 'AM' && hours === 12) {
+          hours = 0;
+      }
+      const meetingStartInMinutes = hours * 60 + minutes;
+
       const matchingSlot = timeSlots.find(slot => {
-        const slotStartTime = slot.split(/[-–]/)[0].trim();
-        const meetingStartTime = meeting.time.split(" ")[0]; // "1:30 PM" -> "1:30"
-  
-        // Very basic match. This could be improved for more accuracy.
-        // e.g., converting both to minutes from midnight
-        return slotStartTime.startsWith(meetingStartTime) || meeting.time.startsWith(slotStartTime);
+        const slotStartTimeStr = slot.split(/[-–]/)[0].trim();
+        const [slotHour, slotMinute] = slotStartTimeStr.split(':').map(Number);
+        const slotStartInMinutes = slotHour * 60 + slotMinute;
+        return slotStartInMinutes === meetingStartInMinutes;
       });
   
       if (matchingSlot) {
