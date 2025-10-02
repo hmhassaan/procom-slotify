@@ -139,7 +139,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     }
 
     const meetingDate = new Date(date);
-    const ymd = formatInTimeZone(meetingDate, 'yyyy-MM-dd', timeZone);
+    const ymd = formatInTimeZone(meetingDate, timeZone, 'yyyy-MM-dd');
     const startUtc = fromZonedTime(`${ymd} ${startTimeStr}:00`, timeZone);
     let endUtc;
 
