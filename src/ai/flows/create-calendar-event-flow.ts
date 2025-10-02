@@ -40,6 +40,10 @@ export const createCalendarEventFlow = ai.defineFlow(
       return;
     }
     
+    if (!date || isNaN(date)) {
+        throw new Error(`Invalid date timestamp received: ${date}`);
+    }
+
     const organizerDoc = await getDoc(doc(db, 'users', organizerId));
     if (!organizerDoc.exists() || !organizerDoc.data().googleRefreshToken) {
       console.log(`Organizer ${organizerId} has not connected their Google Calendar. Skipping event creation.`);
