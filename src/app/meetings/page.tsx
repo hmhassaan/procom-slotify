@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Check, X, Calendar as CalendarIcon, User, Users, Trash2, CalendarPlus, Clock, MapPin } from "lucide-react";
+import { Check, X, Calendar as CalendarIcon, User, Users, Trash2, CalendarPlus, Clock, MapPin, Video } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Meeting, MeetingAttendeeStatus, User as AppUser, Position } from "@/app/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -43,6 +43,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
     const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
     const [location, setLocation] = useState("");
     const [externalAttendees, setExternalAttendees] = useState("");
+    const [generateMeetLink, setGenerateMeetLink] = useState(true);
   
     useEffect(() => {
         if (isOpen) {
@@ -54,6 +55,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
             setDuration(50);
             setLocation("");
             setExternalAttendees("");
+            setGenerateMeetLink(true);
             setIsCreating(false);
         }
     }, [isOpen]);
@@ -78,6 +80,7 @@ const ScheduleMeetingFromMeetingsPage = () => {
                 attendeeIds: selectedUserIds,
                 location: location.trim(),
                 externalAttendees: externalEmails,
+                generateMeetLink: generateMeetLink,
             });
             toast({ title: "Meeting Scheduled", description: "Invitations have been sent." });
             setIsOpen(false);
@@ -177,6 +180,10 @@ const ScheduleMeetingFromMeetingsPage = () => {
                             <Input id="duration" type="number" value={duration} onChange={(e) => setDuration(parseInt(e.target.value, 10) || 0)} className="w-[60px] text-center" />
                             <Label htmlFor="duration" className="text-sm text-muted-foreground">min</Label>
                         </div>
+                    </div>
+                     <div className="flex items-center space-x-2">
+                        <Checkbox id="generate-meet-link" checked={generateMeetLink} onCheckedChange={(checked) => setGenerateMeetLink(!!checked)} />
+                        <Label htmlFor="generate-meet-link">Generate Google Meet Link</Label>
                     </div>
                     <div>
                          <Label htmlFor="external-attendees">External Attendees (Optional)</Label>
@@ -310,85 +317,96 @@ const MeetingCard = ({ meeting, onRespond, onDelete }: { meeting: Meeting, onRes
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex justify-between items-start">
-          <div className="space-y-2">
-            <h4 className="font-semibold flex items-center gap-2"><Users className="w-4 h-4" />Attendees ({meeting.attendees.length + (meeting.externalAttendees?.length || 0)})</h4>
-            <div className="flex flex-wrap gap-2">
-              {meeting.attendees.map(attendee => (
-                 <TooltipProvider key={attendee.userId}>
-                    <Tooltip>
-                        <TooltipTrigger>
-                           <div className="flex items-center gap-2 p-1.5 rounded-lg border">
-                                <Avatar className="h-6 w-6 text-xs">
-                                <AvatarFallback>{attendee.name.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                                <span className="text-sm">{attendee.name}</span>
-                                {isOrganizer && getStatusBadge(attendee.status)}
-                           </div>
-                        </TooltipTrigger>
-                         <TooltipContent>
-                           {isOrganizer && attendee.status === 'declined' && attendee.responseReason ? <p>Reason: {attendee.responseReason}</p> : isOrganizer ? <p>Status: {attendee.status}</p> : <p>{attendee.name}</p>}
-                        </TooltipContent>
-                    </Tooltip>
-                 </TooltipProvider>
-              ))}
-              {meeting.externalAttendees?.map(email => (
-                 <TooltipProvider key={email}>
-                    <Tooltip>
-                        <TooltipTrigger>
-                           <div className="flex items-center gap-2 p-1.5 rounded-lg border">
-                                <Avatar className="h-6 w-6 text-xs">
-                                <AvatarFallback>{email.charAt(0).toUpperCase()}</AvatarFallback>
-                                </Avatar>
-                                <span className="text-sm italic">{email}</span>
-                           </div>
-                        </TooltipTrigger>
-                         <TooltipContent>
-                           <p>External Attendee</p>
-                        </TooltipContent>
-                    </Tooltip>
-                 </TooltipProvider>
-              ))}
+        <div className="space-y-4">
+            <div className="flex justify-between items-start">
+              <div className="space-y-2">
+                <h4 className="font-semibold flex items-center gap-2"><Users className="w-4 h-4" />Attendees ({meeting.attendees.length + (meeting.externalAttendees?.length || 0)})</h4>
+                <div className="flex flex-wrap gap-2">
+                  {meeting.attendees.map(attendee => (
+                     <TooltipProvider key={attendee.userId}>
+                        <Tooltip>
+                            <TooltipTrigger>
+                               <div className="flex items-center gap-2 p-1.5 rounded-lg border">
+                                    <Avatar className="h-6 w-6 text-xs">
+                                    <AvatarFallback>{attendee.name.charAt(0)}</AvatarFallback>
+                                    </Avatar>
+                                    <span className="text-sm">{attendee.name}</span>
+                                    {isOrganizer && getStatusBadge(attendee.status)}
+                               </div>
+                            </TooltipTrigger>
+                             <TooltipContent>
+                               {isOrganizer && attendee.status === 'declined' && attendee.responseReason ? <p>Reason: {attendee.responseReason}</p> : isOrganizer ? <p>Status: {attendee.status}</p> : <p>{attendee.name}</p>}
+                            </TooltipContent>
+                        </Tooltip>
+                     </TooltipProvider>
+                  ))}
+                  {meeting.externalAttendees?.map(email => (
+                     <TooltipProvider key={email}>
+                        <Tooltip>
+                            <TooltipTrigger>
+                               <div className="flex items-center gap-2 p-1.5 rounded-lg border">
+                                    <Avatar className="h-6 w-6 text-xs">
+                                    <AvatarFallback>{email.charAt(0).toUpperCase()}</AvatarFallback>
+                                    </Avatar>
+                                    <span className="text-sm italic">{email}</span>
+                               </div>
+                            </TooltipTrigger>
+                             <TooltipContent>
+                               <p>External Attendee</p>
+                            </TooltipContent>
+                        </Tooltip>
+                     </TooltipProvider>
+                  ))}
+                </div>
+              </div>
+              {!isOrganizer && currentUserStatus && currentUserStatus !== 'organizer' && !meetingIsPast && (
+                <div className="flex gap-2">
+                  <Button size="sm" variant={currentUserStatus === 'accepted' ? "default" : "outline"} onClick={() => onRespond(meeting.id, 'accepted')}><Check className="mr-2"/>Accept</Button>
+                  <Dialog open={isDeclineDialogOpen} onOpenChange={setIsDeclineDialogOpen}>
+                     <DialogTrigger asChild>
+                        <Button size="sm" variant={currentUserStatus === 'declined' ? "destructive" : "outline"}><X className="mr-2"/>Decline</Button>
+                     </DialogTrigger>
+                     <DialogContent>
+                        <DialogHeader><DialogTitle>Decline Meeting</DialogTitle></DialogHeader>
+                        <div className="py-4 space-y-2">
+                            <Label htmlFor="decline-reason">Reason (Optional)</Label>
+                            <Textarea id="decline-reason" value={declineReason} onChange={(e) => setDeclineReason(e.target.value)} placeholder="Let the organizer know why you can't make it..."/>
+                        </div>
+                        <DialogFooter>
+                            <Button variant="ghost" onClick={() => setIsDeclineDialogOpen(false)}>Cancel</Button>
+                            <Button variant="destructive" onClick={handleDeclineSubmit}>Confirm Decline</Button>
+                        </DialogFooter>
+                     </DialogContent>
+                  </Dialog>
+                </div>
+              )}
+              {isOrganizer && !meetingIsPast && (
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button size="sm" variant="destructive" className="gap-2"><Trash2/>Cancel Meeting</Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                            <AlertDialogDescription>This will cancel the meeting and notify all attendees. This action cannot be undone.</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Go Back</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => onDelete(meeting.id)}>Yes, Cancel Meeting</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+              )}
             </div>
-          </div>
-          {!isOrganizer && currentUserStatus && currentUserStatus !== 'organizer' && !meetingIsPast && (
-            <div className="flex gap-2">
-              <Button size="sm" variant={currentUserStatus === 'accepted' ? "default" : "outline"} onClick={() => onRespond(meeting.id, 'accepted')}><Check className="mr-2"/>Accept</Button>
-              <Dialog open={isDeclineDialogOpen} onOpenChange={setIsDeclineDialogOpen}>
-                 <DialogTrigger asChild>
-                    <Button size="sm" variant={currentUserStatus === 'declined' ? "destructive" : "outline"}><X className="mr-2"/>Decline</Button>
-                 </DialogTrigger>
-                 <DialogContent>
-                    <DialogHeader><DialogTitle>Decline Meeting</DialogTitle></DialogHeader>
-                    <div className="py-4 space-y-2">
-                        <Label htmlFor="decline-reason">Reason (Optional)</Label>
-                        <Textarea id="decline-reason" value={declineReason} onChange={(e) => setDeclineReason(e.target.value)} placeholder="Let the organizer know why you can't make it..."/>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="ghost" onClick={() => setIsDeclineDialogOpen(false)}>Cancel</Button>
-                        <Button variant="destructive" onClick={handleDeclineSubmit}>Confirm Decline</Button>
-                    </DialogFooter>
-                 </DialogContent>
-              </Dialog>
-            </div>
-          )}
-          {isOrganizer && !meetingIsPast && (
-            <AlertDialog>
-                <AlertDialogTrigger asChild>
-                    <Button size="sm" variant="destructive" className="gap-2"><Trash2/>Cancel Meeting</Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                        <AlertDialogDescription>This will cancel the meeting and notify all attendees. This action cannot be undone.</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Go Back</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => onDelete(meeting.id)}>Yes, Cancel Meeting</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-          )}
+             {meeting.meetLink && !meetingIsPast && (
+                <div className="pt-2">
+                    <Button asChild>
+                        <a href={meeting.meetLink} target="_blank" rel="noopener noreferrer">
+                            <Video className="mr-2"/> Join with Google Meet
+                        </a>
+                    </Button>
+                </div>
+            )}
         </div>
       </CardContent>
     </Card>

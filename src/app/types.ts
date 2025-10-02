@@ -83,6 +83,8 @@ export type Meeting = {
   durationInMinutes: number;
   location?: string;
   externalAttendees?: string[];
+  meetLink?: string;
 };
+
 
 

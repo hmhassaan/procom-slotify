@@ -47,7 +47,7 @@ interface AppContextType extends AppState {
   requestPushSubscription: () => Promise<void>;
   disablePushNotifications: () => Promise<void>;
   isPushSubscribed: boolean;
-  createMeeting: (meetingData: { title: string; date: number; time: string; durationInMinutes: number, attendeeIds: string[], location?: string, externalAttendees?: string[] }) => Promise<void>;
+  createMeeting: (meetingData: { title: string; date: number; time: string; durationInMinutes: number, attendeeIds: string[], location?: string, externalAttendees?: string[], generateMeetLink?: boolean }) => Promise<void>;
   respondToMeeting: (meetingId: string, status: MeetingAttendeeStatus, reason?: string) => Promise<void>;
   deleteMeeting: (meetingId: string) => Promise<void>;
 }
@@ -280,7 +280,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [currentUserProfile, addNotification, handleUserTeamChange]);
   
-  const createMeeting = useCallback(async (meetingData: { title: string; date: number; time: string; durationInMinutes: number, attendeeIds: string[], location?: string, externalAttendees?: string[] }) => {
+  const createMeeting = useCallback(async (meetingData: { title: string; date: number; time: string; durationInMinutes: number, attendeeIds: string[], location?: string, externalAttendees?: string[], generateMeetLink?: boolean }) => {
     if (!currentUserProfile) throw new Error("User not authenticated");
 
     const allInvitedUserIds = [...new Set([currentUserProfile.id, ...meetingData.attendeeIds])];
@@ -329,7 +329,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
             organizerId: currentUserProfile.id,
             attendeeIds: meetingData.attendeeIds,
             location: meetingData.location,
-            externalAttendees: meetingData.externalAttendees
+            externalAttendees: meetingData.externalAttendees,
+            generateMeetLink: meetingData.generateMeetLink
         });
         console.log("createCalendarEventFlow finished.");
     } catch (e) {

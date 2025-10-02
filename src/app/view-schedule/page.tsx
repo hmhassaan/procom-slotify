@@ -14,7 +14,7 @@ import { MultiSelect } from "@/components/ui/multi-select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { PlusCircle, Trash2, Filter, Star, ChevronDown, CalendarPlus, Calendar as CalendarIcon, MapPin } from "lucide-react";
+import { PlusCircle, Trash2, Filter, Star, ChevronDown, CalendarPlus, Calendar as CalendarIcon, MapPin, Video } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
@@ -121,6 +121,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
   const [isCreating, setIsCreating] = useState(false);
   const [location, setLocation] = useState("");
   const [externalAttendees, setExternalAttendees] = useState("");
+  const [generateMeetLink, setGenerateMeetLink] = useState(true);
 
   useEffect(() => {
     if (isOpen) {
@@ -133,6 +134,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         setDuration(50);
         setLocation("");
         setExternalAttendees("");
+        setGenerateMeetLink(true);
 
         const startTimeStr = time.split(/[-–]/)[0].trim();
         const [hourStr, minuteStr] = startTimeStr.split(':');
@@ -200,6 +202,7 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         attendeeIds: selectedUserIds,
         location: location.trim(),
         externalAttendees: externalEmails,
+        generateMeetLink: generateMeetLink,
       });
       toast({ title: "Meeting Scheduled", description: "Invitations have been sent." });
       setIsOpen(false);
@@ -305,6 +308,10 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
                 <Input id="duration" type="number" value={duration} onChange={(e) => setDuration(parseInt(e.target.value, 10) || 0)} className="w-[60px] text-center" />
                 <Label htmlFor="duration" className="text-sm text-muted-foreground">min</Label>
             </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Checkbox id="generate-meet-link-view" checked={generateMeetLink} onCheckedChange={(checked) => setGenerateMeetLink(!!checked)} />
+            <Label htmlFor="generate-meet-link-view">Generate Google Meet Link</Label>
           </div>
           <div>
             <Label htmlFor="external-attendees">External Attendees (Optional)</Label>
@@ -599,7 +606,9 @@ const userMeetingsBySlot = useMemo(() => {
         const minute = parseInt(minuteStr, 10) || 0;
         
         if ((hour >= 1 && hour <= 7) || hour === 12) {
-            if (hour >= 1 && hour <= 7) hour += 12;
+            if (hour !== 12) {
+                hour += 12;
+            }
         }
         return hour * 60 + minute;
     };
@@ -755,6 +764,7 @@ const userMeetingsBySlot = useMemo(() => {
                                      <TooltipContent>
                                         <p className="font-bold">{m.title}</p>
                                         {m.location && <p className="flex items-center gap-1"><MapPin className="w-3 h-3"/>{m.location}</p>}
+                                        {m.meetLink && <p className="flex items-center gap-1"><Video className="w-3 h-3"/>Google Meet</p>}
                                      </TooltipContent>
                                   </Tooltip>
                                   )}
@@ -812,6 +822,7 @@ const userMeetingsBySlot = useMemo(() => {
     </TooltipProvider>
   );
 }
+
 
 
 

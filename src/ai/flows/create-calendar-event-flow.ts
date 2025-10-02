@@ -26,6 +26,7 @@ const CreateCalendarEventInputSchema = z.object({
   attendeeIds: z.array(z.string()),
   location: z.string().optional(),
   externalAttendees: z.array(z.string()).optional(),
+  generateMeetLink: z.boolean().optional(),
 });
 export type CreateCalendarEventInput = z.infer<typeof CreateCalendarEventInputSchema>;
 
@@ -36,7 +37,7 @@ export const createCalendarEventFlow = ai.defineFlow(
     inputSchema: CreateCalendarEventInputSchema,
     outputSchema: z.void(),
   },
-  async ({ meetingId, title, date, time, durationInMinutes, organizerId, attendeeIds, location, externalAttendees }) => {
+  async ({ meetingId, title, date, time, durationInMinutes, organizerId, attendeeIds, location, externalAttendees, generateMeetLink }) => {
     console.log('Starting createCalendarEventFlow...');
     if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET || !process.env.GOOGLE_REDIRECT_URI) {
       console.warn('Google OAuth credentials are not configured. Skipping calendar event creation.');
@@ -160,8 +161,8 @@ export const createCalendarEventFlow = ai.defineFlow(
     if (isNaN(startUtc.getTime()) || isNaN(endUtc.getTime())) {
         throw new Error(`Failed to create valid date objects. Start: ${startUtc}, End: ${endUtc}`);
     }
-
-    const event = {
+    
+    const event: any = {
       summary: title,
       location: location || undefined,
       start: { dateTime: startUtc.toISOString(), timeZone },
@@ -176,6 +177,15 @@ export const createCalendarEventFlow = ai.defineFlow(
         ],
       },
     };
+    
+    if (generateMeetLink) {
+        event.conferenceData = {
+            createRequest: {
+                requestId: `slotify-${meetingId}-${Date.now()}`,
+                conferenceSolutionKey: { type: 'hangoutsMeet' }
+            }
+        };
+    }
 
     console.log('Constructed event object:', JSON.stringify(event, null, 2));
     
@@ -193,17 +203,28 @@ export const createCalendarEventFlow = ai.defineFlow(
         const createdEvent = await calendar.events.insert({
             calendarId: 'primary',
             requestBody: event,
+            conferenceDataVersion: 1,
             sendUpdates: 'all',
         });
         console.log(`Successfully created calendar event for all attendees.`);
+        
+        const updateData: { googleIcalUid?: string, meetLink?: string } = {};
 
         if (createdEvent.data.iCalUID) {
-          const googleIcalUid = createdEvent.data.iCalUID;
-          console.log(`Captured iCalUID: ${googleIcalUid}`);
-          console.log(`Updating meeting ${meetingId} with iCalUID...`);
+          updateData.googleIcalUid = createdEvent.data.iCalUID;
+          console.log(`Captured iCalUID: ${updateData.googleIcalUid}`);
+        }
+        
+        if (createdEvent.data.hangoutLink) {
+          updateData.meetLink = createdEvent.data.hangoutLink;
+          console.log(`Captured Google Meet Link: ${updateData.meetLink}`);
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          console.log(`Updating meeting ${meetingId} with new data...`);
           const meetingRef = doc(db, 'meetings', meetingId);
-          await updateDoc(meetingRef, { googleIcalUid: googleIcalUid });
-          console.log('Successfully updated meeting with iCalUID.');
+          await updateDoc(meetingRef, updateData);
+          console.log('Successfully updated meeting document.');
         }
 
     } catch (error: any) {
