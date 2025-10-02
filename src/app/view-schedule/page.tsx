@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
@@ -126,21 +127,33 @@ const ScheduleMeetingDialog = ({ day, time, filteredUsers, trigger }: { day: str
         setSelectedUserIds(defaultSelectedIds);
         setMeetingTitle("");
 
+        // Time parsing from slot - extract start time
         const startTimeStr = time.split(/[-–]/)[0].trim();
         const [hourStr, minuteStr] = startTimeStr.split(':');
         let hour = parseInt(hourStr, 10);
         const minute = minuteStr || "00";
+        
+        let amPm = "AM";
+        let displayHour = hour;
 
         // University Time Slot Logic: 8-11 are AM, others are PM.
-        // 12 PM is noon. 1-7 PM are afternoon/evening.
-        if ((hour >= 1 && hour <= 7) || hour === 12) {
-             setTimeAmPm("PM");
-             if (hour > 12) hour = hour - 12;
+        if ((hour >= 1 && hour <= 7) || hour === 12) { 
+             amPm = "PM";
+             if(hour >=1 && hour <=7) displayHour = hour; // Keep 1-7 as is for 12-hour display
+             else if (hour === 12) displayHour = 12; // 12 PM
         } else {
-             setTimeAmPm("AM");
+             amPm = "AM";
+             displayHour = hour;
+        }
+
+        if (hour > 12) { // for times like 13:00, 14:00
+            displayHour = hour - 12;
+            amPm = "PM";
         }
         
-        setTimeInput(`${String(hour).padStart(2, '0')}:${minute}`);
+        setTimeAmPm(amPm);
+        setTimeInput(`${String(displayHour).padStart(2, '0')}:${minute}`);
+
 
         // Find the next occurrence of the selected day
         const today = new Date();
@@ -517,49 +530,54 @@ export default function ViewSchedulePage() {
   const clearAdvancedFilters = () => setAdvancedFilterGroups([]);
   const isAdvancedFilterActive = advancedFilterGroups.length > 0;
   
-  const userMeetingsBySlot = useMemo(() => {
+const userMeetingsBySlot = useMemo(() => {
     const map = new Map<string, Meeting[]>();
     if (!currentUserProfile || !meetings) return map;
-  
-    const acceptedMeetings = meetings.filter(meeting => 
+
+    const acceptedMeetings = meetings.filter(meeting =>
         meeting.attendees.some(a => a.userId === currentUserProfile.id && a.status === 'accepted')
     );
 
-    acceptedMeetings.forEach(meeting => {
-      if (!meeting.date) return;
-  
-      const meetingDate = new Date(meeting.date);
-      const meetingDay = format(meetingDate, "eeee");
-  
-      if (!weekdays.includes(meetingDay)) return;
+    const parseTimeToMinutes = (timeStr: string): number => {
+        const [timePart, modifier] = timeStr.split(' ');
+        let [hours, minutes] = timePart.split(':').map(Number);
 
-      const [timePart, modifier] = meeting.time.split(' ');
-      let [hours, minutes] = timePart.split(':').map(Number);
-      if (modifier && modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
-      if (modifier && modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
-      
-      const meetingStartInMinutes = hours * 60 + minutes;
-      const meetingEndInMinutes = meetingStartInMinutes + 50; // Assuming 50-minute meetings
-
-      timeSlots.forEach(slot => {
-        const [slotStartStr, slotEndStr] = slot.split(/[-–]/);
-        const [slotStartHour, slotStartMinute] = slotStartStr.trim().split(':').map(Number);
-        const [slotEndHour, slotEndMinute] = slotEndStr.trim().split(':').map(Number);
+        if (modifier && modifier.toUpperCase() === 'PM' && hours < 12) hours += 12;
+        if (modifier && modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
         
-        const slotStartInMinutes = slotStartHour * 60 + slotStartMinute;
-        const slotEndInMinutes = slotEndHour * 60 + slotEndMinute;
+        return hours * 60 + (minutes || 0);
+    };
 
-        // Check for overlap
-        if (meetingStartInMinutes < slotEndInMinutes && meetingEndInMinutes > slotStartInMinutes) {
-             const key = `${meetingDay}-${slot}`;
-             const existing = map.get(key) || [];
-             map.set(key, [...existing, meeting]);
-        }
-      });
+    acceptedMeetings.forEach(meeting => {
+        if (!meeting.date) return;
+
+        const meetingDate = new Date(meeting.date);
+        const meetingDay = format(meetingDate, "eeee");
+
+        if (!weekdays.includes(meetingDay)) return;
+
+        const meetingStartInMinutes = parseTimeToMinutes(meeting.time);
+        const meetingEndInMinutes = meetingStartInMinutes + 50; // Assuming 50-minute meetings
+
+        timeSlots.forEach(slot => {
+            const [slotStartStr, slotEndStr] = slot.split(/[-–]/);
+            const [slotStartHour, slotStartMinute] = slotStartStr.trim().split(':').map(Number);
+            const slotStartInMinutes = slotStartHour * 60 + (slotStartMinute || 0);
+            
+            const [slotEndHour, slotEndMinute] = (slotEndStr || slotStartStr).trim().split(':').map(Number);
+            const slotEndInMinutes = slotEndHour * 60 + (slotEndMinute || 0);
+            
+            // Check for overlap
+            if (meetingStartInMinutes < slotEndInMinutes && meetingEndInMinutes > slotStartInMinutes) {
+                const key = `${meetingDay}-${slot}`;
+                const existing = map.get(key) || [];
+                map.set(key, [...existing, meeting]);
+            }
+        });
     });
-  
+
     return map;
-  }, [meetings, currentUserProfile, timeSlots]);
+}, [meetings, currentUserProfile, timeSlots]);
 
   if (pageLoading) {
     return <div className="flex items-center justify-center min-h-screen"><p>Loading schedule...</p></div>;
@@ -724,3 +742,4 @@ export default function ViewSchedulePage() {
     </TooltipProvider>
   );
 }
+
