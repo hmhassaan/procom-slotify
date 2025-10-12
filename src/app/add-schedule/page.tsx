@@ -183,7 +183,7 @@ export default function AddSchedulePage() {
       notificationPreferences: finalNotificationPreferences,
       ...(finalRole === 'executive' && finalExecutiveTeams && { teams: finalExecutiveTeams }),
       createdAt: currentUserProfile?.createdAt || Date.now(),
-      googleRefreshToken: currentUserProfile?.googleRefreshToken,
+      googleRefreshToken: currentUserProfile?.googleRefreshToken || null,
     };
     
     await addUser(userData, !isEditing); // addUser is actually a setDoc, so it works for create and update

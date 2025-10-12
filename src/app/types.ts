@@ -32,7 +32,7 @@ export type User = {
   };
   // A timestamp for when the user was created, useful for sorting.
   createdAt: number; 
-  googleRefreshToken?: string;
+  googleRefreshToken?: string | null;
 };
 
 export type FreeSlots = {
@@ -85,6 +85,7 @@ export type Meeting = {
   externalAttendees?: string[];
   meetLink?: string;
 };
+
 
 
 
