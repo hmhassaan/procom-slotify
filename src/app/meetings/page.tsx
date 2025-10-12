@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -359,26 +360,35 @@ const MeetingCard = ({ meeting, onRespond, onDelete }: { meeting: Meeting, onRes
                   ))}
                 </div>
               </div>
-              {!isOrganizer && currentUserStatus && currentUserStatus !== 'organizer' && !meetingIsPast && (
-                <div className="flex gap-2">
-                  <Button size="sm" variant={currentUserStatus === 'accepted' ? "default" : "outline"} onClick={() => onRespond(meeting.id, 'accepted')}><Check className="mr-2"/>Accept</Button>
-                  <Dialog open={isDeclineDialogOpen} onOpenChange={setIsDeclineDialogOpen}>
-                     <DialogTrigger asChild>
-                        <Button size="sm" variant={currentUserStatus === 'declined' ? "destructive" : "outline"}><X className="mr-2"/>Decline</Button>
-                     </DialogTrigger>
-                     <DialogContent>
-                        <DialogHeader><DialogTitle>Decline Meeting</DialogTitle></DialogHeader>
-                        <div className="py-4 space-y-2">
-                            <Label htmlFor="decline-reason">Reason (Optional)</Label>
-                            <Textarea id="decline-reason" value={declineReason} onChange={(e) => setDeclineReason(e.target.value)} placeholder="Let the organizer know why you can't make it..."/>
+              {!isOrganizer && !meetingIsPast && (
+                  <>
+                    {currentUserStatus === 'pending' ? (
+                        <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => onRespond(meeting.id, 'accepted')}><Check className="mr-2"/>Accept</Button>
+                            <Dialog open={isDeclineDialogOpen} onOpenChange={setIsDeclineDialogOpen}>
+                                <DialogTrigger asChild>
+                                    <Button size="sm" variant="outline"><X className="mr-2"/>Decline</Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader><DialogTitle>Decline Meeting</DialogTitle></DialogHeader>
+                                    <div className="py-4 space-y-2">
+                                        <Label htmlFor="decline-reason">Reason (Optional)</Label>
+                                        <Textarea id="decline-reason" value={declineReason} onChange={(e) => setDeclineReason(e.target.value)} placeholder="Let the organizer know why you can't make it..."/>
+                                    </div>
+                                    <DialogFooter>
+                                        <Button variant="ghost" onClick={() => setIsDeclineDialogOpen(false)}>Cancel</Button>
+                                        <Button variant="destructive" onClick={handleDeclineSubmit}>Confirm Decline</Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
                         </div>
-                        <DialogFooter>
-                            <Button variant="ghost" onClick={() => setIsDeclineDialogOpen(false)}>Cancel</Button>
-                            <Button variant="destructive" onClick={handleDeclineSubmit}>Confirm Decline</Button>
-                        </DialogFooter>
-                     </DialogContent>
-                  </Dialog>
-                </div>
+                    ) : (
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-muted-foreground">You have:</span>
+                            {getStatusBadge(currentUserStatus!)}
+                        </div>
+                    )}
+                  </>
               )}
               {isOrganizer && !meetingIsPast && (
                 <AlertDialog>
