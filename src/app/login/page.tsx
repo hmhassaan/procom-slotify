@@ -1,33 +1,20 @@
+
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { LogIn, Shield } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from "@/components/ui/alert-dialog";
 import { useAppContext } from "@/context/AppContext";
 
 export default function LoginPage() {
-  const { currentUser, signIn, adminLogin, loading: authLoading } = useAuth();
+  const { currentUser, signIn, loading: authLoading } = useAuth();
   const { loading: appLoading } = useAppContext();
   const router = useRouter();
   const { toast } = useToast();
 
-  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
-  const [password, setPassword] = useState("");
   const [clicking, setClicking] = useState(false);
 
   useEffect(() => {
@@ -58,20 +45,6 @@ export default function LoginPage() {
       });
     } finally {
       setClicking(false);
-    }
-  };
-
-  const handleAdminLogin = () => {
-    try {
-      adminLogin(password);
-      setIsAdminLoginOpen(false);
-      router.replace("/");
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Login Failed",
-        description: (error as Error).message,
-      });
     }
   };
 
@@ -111,42 +84,7 @@ export default function LoginPage() {
           <LogIn className="mr-2" />{" "}
           {clicking ? "Signing in…" : "Sign In with Google"}
         </Button>
-
-        <Button
-          variant="secondary"
-          onClick={() => setIsAdminLoginOpen(true)}
-          disabled={clicking}
-        >
-          <Shield className="mr-2" /> Admin Login
-        </Button>
       </div>
-
-      <AlertDialog open={isAdminLoginOpen} onOpenChange={setIsAdminLoginOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Admin Login</AlertDialogTitle>
-            <AlertDialogDescription>
-              Enter the admin password to bypass Google Sign-In. This provides universal admin access.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAdminLogin()}
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleAdminLogin}>
-              Login
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

@@ -62,7 +62,7 @@ const roleToLabel = (role: UserRole): string => {
 }
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
-  const { currentUser, isAdminBypass, loading: authLoading } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
   const { isSubscribed: isPushSubscribed, requestSubscription: requestPushSubscription, unsubscribe: disablePushNotifications } = usePushNotifications();
 
   const [state, setState] = useState<Omit<AppState, 'currentUserProfile' | 'isUniversalAdmin' | 'isExecutiveAdmin' | 'isTeamAdmin' | 'isSubTeamAdmin' | 'hasAdminPrivileges'>>({
@@ -79,22 +79,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   });
 
   const currentUserProfile = useMemo(() => {
-    if (isAdminBypass) {
-        return {
-             id: "admin-bypass-user",
-             name: "Admin",
-             nuId: "N/A",
-             email: "admin@example.com",
-             courses: [],
-             teams: [],
-             position: "N/A",
-             offDays: [],
-             role: 'universal',
-             createdAt: Date.now()
-        } as User;
-    }
     return state.users.find(u => u.id === currentUser?.uid) ?? null;
-  }, [currentUser, state.users, isAdminBypass]);
+  }, [currentUser, state.users]);
 
   const isUniversalAdmin = currentUserProfile?.role === 'universal';
   const isExecutiveAdmin = currentUserProfile?.role === 'executive';

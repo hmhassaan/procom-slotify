@@ -25,10 +25,8 @@ import { toast } from "@/hooks/use-toast";
 interface AuthContextType {
   currentUser: FirebaseUser | null;
   loading: boolean;
-  isAdminBypass: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
-  adminLogin: (password: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -37,7 +35,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const signingRef = useRef(false);
-  const [isAdminBypass, setIsAdminBypass] = useState(false);
 
   useEffect(() => {
     const handleRedirectResult = async () => {
@@ -78,26 +75,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
   
-  const adminLogin = (password: string) => {
-    if (password === "ViratKohli18") {
-      const adminUser: Partial<FirebaseUser> = {
-        uid: "admin-bypass-user",
-        displayName: "Admin",
-        email: "admin@example.com",
-      };
-      setCurrentUser(adminUser as FirebaseUser);
-      setIsAdminBypass(true);
-    } else {
-      throw new Error("Incorrect password");
-    }
-  };
-
-
   const firebaseSignOut = async () => {
     try {
       await signOut(auth);
       setCurrentUser(null);
-      setIsAdminBypass(false);
     } catch (error) {
       console.error("Error during sign-out:", error);
     }
@@ -116,23 +97,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      if (!isAdminBypass) {
-        setCurrentUser(user);
-      }
+      setCurrentUser(user);
       setLoading(false);
     });
 
     return unsubscribe;
-  }, [isAdminBypass]);
+  }, []);
   
 
   const value = {
     currentUser,
     loading,
-    isAdminBypass,
     signIn,
     signOut: firebaseSignOut,
-    adminLogin,
   };
 
   return (
